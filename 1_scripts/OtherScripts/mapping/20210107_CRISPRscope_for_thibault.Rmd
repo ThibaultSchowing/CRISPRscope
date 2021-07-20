@@ -1,0 +1,737 @@
+---
+title: "CRISPRscope_for_Thibault"
+author: "Vincent Somerville"
+date: "11/12/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup ,echo=FALSE}
+knitr::opts_chunk$set(message=FALSE, echo=FALSE, eval=FALSE)
+
+```
+
+
+# Metagenome spacer/protospacer mapping
+
+Here, I create the script to map the metagenomic reads against the protospacer/spacer collection. this script should eventually be run on slurm.
+
+```{bash}
+
+###-----------------------------------------------------
+####Description section
+#Here you can define the locations and file names
+###-----------------------------------------------------
+mappingFile=<This is the location and file with the DR+spacer+DR>
+threads=37
+BaseLocation_output=<directory where your output should go>
+script_locations=<directory where the R scripts are located>
+
+
+###-----------------------------------------------------
+####load moduel
+#here you load your slurm modules
+#the follow tools are needed
+###-----------------------------------------------------
+
+##load bwa
+##load samtools
+##load R ?
+##load bedtools
+
+###-----------------------------------------------------
+####preperation
+#create a bed preperation file
+###-----------------------------------------------------
+
+grep ">" ${mappingFile} | sed 's/>//g' |awk -F "\t" '{OFS="\t"}{print $1,"40","60",$1}'  > ${script_locations}/spacer_mapping_file.bed
+
+
+###-----------------------------------------------------
+####script
+#here are the indivual scripting steps
+###-----------------------------------------------------
+
+##delete and creat output directories
+rm -r $BaseLocation_output
+mkdir -p $BaseLocation_output/final
+
+##index you mapping file
+bwa index $mappingFile
+
+
+
+  for bioprojectsss in $(ls /data/projects/p539_crisprscope/0_data/metagenomes) #loop through the different bioprojects
+    do
+    echo "======================================="
+    echo -e "Bioproject: "${bioprojectsss}
+    for biosamplesss in $(ls /data/projects/p539_crisprscope/0_data/metagenomes/${bioprojectsss}) #loop through the different biosamples
+      do
+      echo "======================================="
+      echo -e "Biosample: "${biosamplesss}
+    
+      #check number of read files
+      numReadss=$(ls /data/projects/p539_crisprscope/0_data/metagenomes/${bioprojectsss}/${biosamplesss} |wc -l)
+    
+      if [ "$numReadss" = "2"  ]
+        then
+        echo -e "there are two read files in the directory, therefore we run a PE bwa alignement"
+        
+        bwa mem -t 37 $mappingFile \
+        /data/projects/p539_crisprscope/0_data/metagenomes/${bioprojectsss}/${biosamplesss}/*_R1* \
+        /data/projects/p539_crisprscope/0_data/metagenomes/${bioprojectsss}/${biosamplesss}/*_R2*  | samtools sort -@${threads} -O BAM \
+        -o ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted.bam - 
+        
+      else
+        echo -e "there are only one read file in the directory, therefore we run a single end bwa alignement"
+        bwa mem -t 37 $mappingFile \
+        /data/projects/p539_crisprscope/0_data/metagenomes/${bioprojectsss}/${biosamplesss}/* | samtools sort -@${threads} -O BAM \
+        -o ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted.bam - 
+      fi
+      
+  ##-------------------mapped
+    
+  samtools view -b -F 4 ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted.bam > \
+  ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped.bam
+  
+  ##-------------------high quality
+  
+  samtools view -h -q 30 -b ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped.bam > \
+  ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30.bam
+   
+  ##-------------------
+  ###-----------------ONLY spacer and not the repeat region mapped reads --> reads mapping to protospacer
+  ##-------------------
+  
+  rm -r ${BaseLocation_output}/tmp
+  mkdir -p ${BaseLocation_output}/tmp
+  
+  cd ${BaseLocation_output}/tmp
+
+  ##bam header 
+  samtools view -H ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30.bam  > \
+ ${bioprojectsss}_${biosamplesss}_header.sam  
+
+  ##creat sam file for calcualtions
+  samtools view ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30.bam > \
+  ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30_sub.sam
+
+  ## extract reads that map max 40bp
+  ${script_locations}/mappingLengthfiltering_protospacer_thibault.R -i ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30_sub.sam -o ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_protospacer.sam
+
+  #prepare sam file
+  awk '{OFS="\t"} {print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14}' ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_protospacer.sam > \
+  ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_protospacer_02.sam
+  
+  #merge header and sam file
+  cat ${bioprojectsss}_${biosamplesss}_header.sam   \
+   ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_protospacer_02.sam |samtools view -S -b > \
+   ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_protospacer_final.bam
+  
+  
+  bedtools coverage -bed -a ${script_locations}/spacer_mapping_file.bed -b ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_protospacer_final.bam  >  ${bioprojectsss}_${biosamplesss}_protospacer_coverage.bed
+    
+    mkdir -p ${BaseLocation_output}/final
+    
+  awk -F "\t" -v bioprojetzzz="$bioprojectsss" -v biosamplezzz="$biosamplesss" '{OFS="\t"} {print $0,bioprojetzzz,biosamplezzz}' ${bioprojectsss}_${biosamplesss}_protospacer_coverage.bed   > ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_protospacer_coverage.bed
+  
+  cat ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_protospacer_coverage.bed >> ${BaseLocation_output}/final/allSamples_protospacer_coverage.bed
+
+  ##-------------------
+  ###-----------------properly mapped reads --> reads mapping to CRISPR SPACER
+  ##-------------------
+  rm -r ${BaseLocation_output}/tmp
+  mkdir -p ${BaseLocation_output}/tmp
+  
+  cd ${BaseLocation_output}/tmp
+
+  ##bam header 
+  samtools view -H ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30.bam  > \
+ ${bioprojectsss}_${biosamplesss}_header.sam  
+
+  ##creat sam file for calcualtions
+  samtools view ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30.bam > \
+  ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30_sub.sam
+
+  ## extract reads that map max 40bp
+  ${script_locations}/mappingLengthfiltering_spacer_thibault.R -i ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_mapQ_30_sub.sam -o \
+  ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_spacer.sam
+
+  #prepare sam file
+  awk '{OFS="\t"} {print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14}' ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_spacer.sam > \
+  ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_spacer_02.sam
+  
+  #merge header and sam file
+  cat ${bioprojectsss}_${biosamplesss}_header.sam   \
+   ${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_spacer_02.sam |samtools view -S -b > \
+   ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_spacer_final.bam
+  
+  
+  bedtools coverage -bed -a ${script_locations}/spacer_mapping_file.bed -b \
+  ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_rawIllumina_bwamem_sorted_mapped_spacer_final.bam  >  \
+  ${bioprojectsss}_${biosamplesss}_spacer_coverage.bed
+    
+    mkdir -p ${BaseLocation_output}/final
+    
+  awk -F "\t" -v bioprojetzzz="$bioprojectsss" -v biosamplezzz="$biosamplesss" '{OFS="\t"} {print $0,bioprojetzzz,biosamplezzz}' \
+  ${bioprojectsss}_${biosamplesss}_spacer_coverage.bed   > ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_spacer_coverage.bed
+  
+  cat ${BaseLocation_output}/bwaMapping2DB/${bioprojectsss}_${biosamplesss}_spacer_coverage.bed >> ${BaseLocation_output}/final/allSamples_spacer_coverage.bed
+
+    ##-------------------
+    ###-----------------count number of reads for normalization
+    ##-------------------
+
+    readss=$(cat /data/projects/p539_crisprscope/0_data/metagenomes/${bioprojectsss}/${biosamplesss}/* |grep "^@" -c) 
+    echo -e ${bioprojectsss}"\t"${biosamplesss}"\t"${readss} > ${BaseLocation_output}/final/reads4normalization.txt
+
+    done #biosamplessss
+  done #bioprojectsss
+  
+
+```
+
+## analysis
+
+Here, I look at the mapping frequency of spacer and protospacer. 
+
+```{bash}
+mkdir -p ~/Desktop/Projects/2020_/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/
+
+#scp ./* vincent@130.223.51.116:/data/projects/p539_crisprscope/04_spacer_protospacer_mapping/01_data/
+scp vincent@130.223.51.116:/data/projects/p539_crisprscope/04_spacer_protospacer_mapping/01_data/* ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/
+
+~/Desktop/Projects/2020_/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/
+
+```
+
+subset large spacer,protospacer file which contains all these columns:
+"Name","startSpacer","endSpacer","ClusterName","numReads","basesCoverd","basesTotal","numcov","sample"
+to only containing these three:
+"ClusterName","numReads"."sample"
+
+
+```{bash}
+
+cut -f 4,5,10 ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_spacer_coverage.bed > ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_spacer_coverage_short.bed
+
+cut -f 5 ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_protospacer_coverage.bed > ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_spacer_coverage_tmp.bed
+
+echo -e "spacer_name\tspacer_cov\tsample\tprotospacer_cov" > ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_coverages_final.bed
+
+paste -d '\t' ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_spacer_coverage_short.bed ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_spacer_coverage_tmp.bed >>  ~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/allSamples_coverages_final.bed
+
+
+```
+
+
+
+```{r}
+
+library(ggplot2)
+library(plyr)
+library(readr)
+library(tidyverse)
+
+##-----------------------------------------------
+##------------------------import data
+##-----------------------------------------------
+
+
+CRISPR_spacer_coverage_start <- read_delim("C:/Users/thsch/Desktop/master_thesis/8_mapping/OUTPUT/final/allSamples_coverages_final.bed", "\t", escape_double = FALSE, trim_ws = TRUE)
+
+reads4normalization <- read_delim("~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/01_data/reads4normalization.txt",  "\t", escape_double = FALSE, col_names = c("bioproject","sample","readNumber"), trim_ws = TRUE)
+
+CRISPR_spacer_coverage_cleaned <- CRISPR_spacer_coverage_start %>% filter(spacer_cov!=0 &protospacer_cov!=0)
+dim(CRISPR_spacer_coverage_cleaned)
+dim(CRISPR_spacer_coverage)
+
+##-----------------------------------------------
+###----------------normalize with total number of reads per sample
+##-----------------------------------------------
+CRISPR_spacer_coverage <- merge(CRISPR_spacer_coverage_cleaned,reads4normalization,by="sample",all.x = TRUE)
+CRISPR_spacer_coverage$spacer_CPM <- 1000000*(CRISPR_spacer_coverage$spacer_cov/CRISPR_spacer_coverage$readNumber)
+CRISPR_spacer_coverage$protospacer_CPM <- 1000000*(CRISPR_spacer_coverage$protospacer_cov/CRISPR_spacer_coverage$readNumber)
+
+##-----------------------------------------------
+###----------------plot
+##-----------------------------------------------
+
+
+my.formula <- y ~ x
+library(ggpmisc)
+plot <- ggplot(CRISPR_spacer_coverage,aes(x=spacer_CPM,y=protospacer_CPM))+geom_point(alpha=0.5)+theme_classic()+
+coord_trans(y="log10",x="log10")+
+  labs(x="spacer [cpm]",y="protospacers  [cpm]")+
+geom_point() +
+geom_smooth(method="lm",se = FALSE)+
+  stat_poly_eq(formula = my.formula,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+               parse = TRUE,)
+plot
+
+
+  png("~/Desktop/Projects/2020_CRISPRscope/04_spacer_protospacer_mapping/spacer_vs_protospacer.png", width = 2800, height = 2800,res=300)
+
+
+plot
+ dev.off()
+
+```
+
+
+
+#ncbi
+
+```{bash}
+mkdir -p /data/projects/p539_crisprscope/ncbi/genome/
+curl 'ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt'  > /data/projects/p539_crisprscope/ncbi/genome/download.file
+
+grep "Weissella" -i  -c /data/projects/p539_crisprscope/ncbi/genome/download.file
+grep "Streptococcus thermophilus" -i  -c /data/projects/p539_crisprscope/ncbi/genome/download.file
+
+```
+
+# Thibaults genomes
+
+Here, I use Thibualts genomes for some analysis. 
+Currently I aim to do the following analysis:
+
+1. FastANI of all genomes
+2. Annotate different described defense mechanisms. 
+
+
+```{bash}
+scp /home/vincent/Downloads/CRISPRscope_assemblies.zip  vincent@130.223.51.116:/data/projects/p539_crisprscope/01_data/CRISPRscope_assemblies.zip
+scp /home/vincent/Downloads/Weisselle_cibaria.zip  vincent@130.223.51.116:/data/projects/p539_crisprscope/01_data/Weisselle_cibaria.zip
+cd /data/projects/p539_crisprscope/01_data/
+unzip Weisselle_cibaria.zip
+rm -r 20201219_all/Weisselle_cibaria
+cp -r Weisselle_cibaria 20201219_all/Weissella_cibaria
+```
+
+merge the different folders
+
+```{bash}
+ cd /data/projects/p539_crisprscope/01_data/CRISPRscope_assemblies
+ 
+ll DIALACT/20201110/
+ll DIALACT/20201201/
+
+ll NCBI//20201110/
+ll NCBI//20201201/
+
+
+###------------------------
+ll DIALACT/20201110/
+###------------------------
+
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii/ 
+
+cp DIALACT/20201110/Lactobacillus_delbrueckii/* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii/ 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_bulgaricus// 
+cp DIALACT/20201110/Lactobacillus_delbrueckii_subsp_bulgaricus/* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_bulgaricus/ 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_lactis/// 
+cp DIALACT/20201110/Lactobacillus_delbrueckii_subsp_lactis//* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_lactis// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_helveticus//// 
+cp DIALACT/20201110/Lactobacillus_helveticus/* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_helveticus/ 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_rhamnosus///// 
+cp DIALACT/20201110/Lactobacillus_rhamnosus//* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_rhamnosus// 
+
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactococcus_lactis_subsp_lactis////// 
+cp DIALACT/20201110/Lactococcus_lactis_subsp_lactis///* /data/projects/p539_crisprscope/01_data/20201219_all/Lactococcus_lactis_subsp_lactis/// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_mesenteroides/////// 
+cp DIALACT/20201110/Leuconostoc_mesenteroides////* /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_mesenteroides//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Propionibacterium_freudenreichii/////// 
+cp DIALACT/20201110/Propionibacterium_freudenreichii////* /data/projects/p539_crisprscope/01_data/20201219_all/Propionibacterium_freudenreichii//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Streptococcus_thermophilus/////// 
+cp DIALACT/20201110/Streptococcus_thermophilus////* /data/projects/p539_crisprscope/01_data/20201219_all/Streptococcus_thermophilus//// 
+
+
+###------------------------
+ll DIALACT/20201201/
+###------------------------
+
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactococcus_lactis_subsp_cremoris// 
+
+cp DIALACT/20201201/Lactococcus_lactis_subsp_cremoris//* /data/projects/p539_crisprscope/01_data/20201219_all/Lactococcus_lactis_subsp_cremoris// 
+
+
+###------------------------
+ll NCBI/20201110/
+###------------------------
+
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii/ 
+
+cp NCBI/20201110/Lactobacillus_delbrueckii/* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii/ 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_bulgaricus// 
+cp NCBI/20201110/Lactobacillus_delbrueckii_subsp_bulgaricus/* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_bulgaricus/ 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_lactis/// 
+cp NCBI/20201110/Lactobacillus_delbrueckii_subsp_lactis//* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_delbrueckii_subsp_lactis// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_helveticus//// 
+cp NCBI/20201110/Lactobacillus_helveticus/* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_helveticus/ 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_rhamnosus///// 
+cp NCBI/20201110/Lactobacillus_rhamnosus//* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_rhamnosus// 
+
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactococcus_lactis/////// 
+cp NCBI/20201110/Lactococcus_lactis////* /data/projects/p539_crisprscope/01_data/20201219_all/Lactococcus_lactis//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_mesenteroides/////// 
+cp NCBI/20201110/Leuconostoc_mesenteroides////* /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_mesenteroides//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Propionibacterium_freudenreichii/////// 
+cp NCBI/20201110/Propionibacterium_freudenreichii////* /data/projects/p539_crisprscope/01_data/20201219_all/Propionibacterium_freudenreichii//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Streptococcus_thermophilus/////// 
+cp NCBI/20201110/Streptococcus_thermophilus////* /data/projects/p539_crisprscope/01_data/20201219_all/Streptococcus_thermophilus//// 
+
+
+###------------------------
+ll NCBI/20201201/
+###------------------------
+
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactiplantibacillus_plantarum/// 
+cp NCBI/20201201/Lactiplantibacillus_plantarum///* /data/projects/p539_crisprscope/01_data/20201219_all/Lactiplantibacillus_plantarum/// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_casei//// 
+cp NCBI/20201201/Lactobacillus_casei////* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_casei//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_fermentum//// 
+cp NCBI/20201201/Lactobacillus_fermentum////* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_fermentum//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_paracasei//// 
+cp NCBI/20201201/Lactobacillus_paracasei////* /data/projects/p539_crisprscope/01_data/20201219_all/Lactobacillus_paracasei//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_lactis//// 
+cp NCBI/20201201/Leuconostoc_lactis////* /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_lactis//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_mesenteroides//// 
+cp NCBI/20201201/Leuconostoc_mesenteroides////* /data/projects/p539_crisprscope/01_data/20201219_all/Leuconostoc_mesenteroides//// 
+
+mkdir -p /data/projects/p539_crisprscope/01_data/20201219_all/Weissella_sp//// 
+cp NCBI/20201201/Weissella_sp////* /data/projects/p539_crisprscope/01_data/20201219_all/Weissella_sp//// 
+
+```
+
+
+##fastaANI
+
+```{bash}
+
+###---------------------------
+##make a list of locations of all Sterm and ldel genomes to comapre
+###---------------------------
+
+##-------------------------------all
+
+
+rm -r /data/projects/p539_crisprscope/fastani/
+mkdir -p /data/projects/p539_crisprscope/fastani/{20201219_run,log}
+
+#rm  /data/projects/p539_crisprscope/fastani/log/filenames_all_fastani.txt
+for speciesss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all)
+do
+echo "===================================="
+echo ${speciesss}
+ ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss} |wc -l
+ ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss} |grep -c ".fna"
+ for genomessss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss})
+ do
+ 
+ genome_short=$(echo ${genomessss}|sed 's/.fna//g')
+echo -e "/data/projects/p539_crisprscope/01_data/20201219_all/${speciesss}"/"${genome_short}".fna  >> /data/projects/p539_crisprscope/fastani/log/filenames_all_fastani.txt
+echo -e ${speciesss}"\t"${genome_short}  >> /data/projects/p539_crisprscope/fastani/log/filenames_all_description_genomes.txt
+
+  done
+done
+
+wc -l /data/projects/p539_crisprscope/fastani/log/filenames_all_description_genomes.txt
+wc -l /data/projects/p539_crisprscope/fastani/log/filenames_all_fastani.txt
+
+
+###---------------------------
+##fastaANI
+###---------------------------
+fastANI --fragLen 1000 -t 37 --ql /data/projects/p539_crisprscope/fastani/log/filenames_all_fastani.txt \
+  --rl /data/projects/p539_crisprscope/fastani/log/filenames_all_fastani.txt \
+  -o /data/projects/p539_crisprscope/fastani/20201219_run/20201219_ANI_output_all.txt
+
+```
+
+move local
+
+```{bash}
+mkdir -p /home/vincent/Desktop/Projects/2020_CRISPRscope/fastani/
+
+scp  vincent@130.223.51.116:/data/projects/p539_crisprscope/fastani/20201219_run/20201219_ANI_output_all.txt //home/vincent/Desktop/Projects/2020_CRISPRscope/fastani/
+scp  vincent@130.223.51.116:/data/projects/p539_crisprscope/fastani/log/filenames_all_description_genomes.txt /home/vincent/Desktop/Projects/2020_CRISPRscope/fastani/
+
+```
+
+```{r}
+
+library(stringr)
+library(readr)
+library(ggplot2)
+library(reshape2)
+
+
+##----------------
+##sterm
+##----------------
+
+
+fastani_thibualt <- read_delim("/home/vincent/Desktop/Projects/2020_CRISPRscope/fastani/20201219_ANI_output_all.txt", "\t", escape_double = FALSE, col_names = FALSE,  trim_ws = TRUE) 
+genomeDescription <- read_delim("~/Desktop/Projects/2020_CRISPRscope/fastani/filenames_all_description_genomes.txt",  "\t", escape_double = FALSE, col_names = FALSE, trim_ws = TRUE)
+
+table(genomeDescription$X1)
+genomeDescription$X1 <- revalue(genomeDescription$X1,c("Lactobacillus_delbrueckii_subsp_bulgaricus"="Lactobacillus_delbrueckii","Lactobacillus_delbrueckii_subsp_lactis"="Lactobacillus_delbrueckii","Lactococcus_lactis_subsp_lactis"="Lactococcus_lactis","Lactococcus_lactis_subsp_cremoris"="Lactococcus_lactis"))
+fastani_thibualt$AF <- (100*(fastani_thibualt$X4/fastani_thibualt$X5))
+
+
+fastani_thibualt$genome1 <- str_split_fixed(fastani_thibualt$X1, fixed("/"), 9)[,8] %>%  gsub(".fna","",.)
+fastani_thibualt$genome2 <- str_split_fixed(fastani_thibualt$X2, fixed("/"), 9)[,8] %>%  gsub(".fna","",.)
+
+fastani_thibualt_cleaned <- fastani_thibualt %>% rename("X3"="id") %>% select(c(genome1,genome2,id,AF))
+tmp1 <- merge(fastani_thibualt_cleaned,genomeDescription,by.x="genome1",by.y="X2") %>% rename("X1"="species_genome1")
+fastani_thibualt_final <- merge(tmp1,genomeDescription,by.x="genome2",by.y="X2") %>% rename("X1"="species_genome2")
+
+
+ fastani_thibualt_final%>%  group_by(species_genome1,species_genome2)  %>%  dplyr::summarize(median = median(id)) 
+
+
+
+```
+
+
+```{bash}
+count=0
+for speciesss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all)
+do
+echo "===================================="
+echo ${speciesss}
+ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss}/ |wc -l
+zss=$(ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss}/ |wc -l)
+
+ count=$((count+zss))
+
+done
+echo $count
+```
+
+
+# Find novel genes
+
+##Prokka 
+annotate all genomes with PROKKA
+
+```{bash}
+
+#conda create -n PROKKA
+conda activate PROKKA
+
+  num=1
+rm -r /data/projects/p539_crisprscope/02_PROKKA/PROKKA_naming.txt
+for speciesss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all)
+do
+echo "===================================="
+echo ${speciesss}
+mkdir -p /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/
+ for genomessss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss})
+ do
+ 
+ genome_short=$(echo ${genomessss}|sed 's/.fna//g')
+
+ rm -r /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/${genome_short}
+ 
+ #/usr/bin/perl /usr/bin/prokka
+prokka --cpus  35 --outdir /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/${genome_short} --locustag A${num}  --proteins proteins.faa --evalue 0.001 --addgenes /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss}/${genome_short}.fna
+
+echo -e "A"${num}"\t"${speciesss}"\t"${genome_short} >> /data/projects/p539_crisprscope/02_PROKKA/PROKKA_naming.txt
+ num=$((num+1))
+
+  done
+done
+
+
+```
+
+#find genes in proximity
+
+take 15 CDS up and down stream of CRISPR repeat
+
+```{bash}
+
+rm -r /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA
+
+for speciesss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all)
+do
+echo "===================================="
+echo ${speciesss}
+mkdir -p /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/gff/${speciesss}/
+ for genomessss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss})
+ do
+ 
+ genome_short=$(echo ${genomessss}|sed 's/.fna//g')
+
+echo "--------------------------"
+echo ${genome_short}
+
+
+grep "CRISPR" -i -A 100 -B 100 /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/${genome_short}/*.gff | grep "REPEAT" -i -A 100 -B 100 | awk -F "\t" '{OFS="\t"}{if($3=="repeat_region"|| $3=="CDS") print $0}' |grep "repeat_region" -A 15 -B 15|grep "repeat_region" -v > /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/gff/${speciesss}/${genome_short}*.gff
+
+rm /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/ffn/${speciesss}/${genome_short}.ffn
+rm /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/faa/${speciesss}/${genome_short}.faa
+
+mkdir -p /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/ffn/${speciesss}/
+mkdir -p /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/faa/${speciesss}/
+
+for genessss in $(awk -F "[\t;]" '{print $9}' /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/gff/${speciesss}/${genome_short}*.gff|sed 's/ID=//g')
+do
+
+sed '/>/s/$/\t/g' /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/${genome_short}/*.ffn | tr -d '\n' | sed 's/>/\n>/2g'| tr '\t' '\n'|grep -A 1 -i ">${genessss}" >> /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/ffn/${speciesss}/${genome_short}.ffn
+
+
+sed '/>/s/$/\t/g' /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/${genome_short}/*.faa | tr -d '\n' | sed 's/>/\n>/2g'| tr '\t' '\n'|grep -A 1 -i ">${genessss}" >> /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/faa/${speciesss}/${genome_short}.faa
+
+done #genessss
+
+  done
+done
+
+```
+
+merge all faa and ffn
+
+```{bash}
+
+
+rm -r /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/
+for speciesss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all)
+do
+echo "===================================="
+echo ${speciesss}
+mkdir -p /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/${speciesss}/
+
+
+
+cat /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/ffn/${speciesss}/*.ffn > /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/${speciesss}.ffn
+cat /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/faa/${speciesss}/*.faa > /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/${speciesss}.faa
+
+
+cat /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/ffn/${speciesss}/*.ffn >> /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/allSpecies.ffn
+cat /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/faa/${speciesss}/*.faa >> /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/allSpecies.faa
+
+
+
+done
+
+
+```
+
+
+
+##cd-hit
+
+cluster faa and ffn
+
+```{bash}
+ rm - r /data/projects/p539_crisprscope/03_genesForClustering/Cd-hit/protein/
+  mkdir -p /data/projects/p539_crisprscope/03_genesForClustering/Cd-hit/protein/
+/home/vincent/apps/cd-hit-v4.8.1-2019-0228/cd-hit-est -i /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/allSpecies.ffn \
+    -o  /data/projects/p539_crisprscope/03_genesForClustering/Cd-hit/protein/allSpecies.txt -c 0.85
+    
+    rm -r /data/projects/p539_crisprscope/03_genesForClustering/Cd-hit/nucleotide
+mkdir -p /data/projects/p539_crisprscope/03_genesForClustering/Cd-hit/nucleotide
+
+/home/vincent/apps/cd-hit-v4.8.1-2019-0228/cd-hit -i /data/projects/p539_crisprscope/03_genesForClustering/FromPROKKA/all_together/allSpecies.faa \
+    -o  /data/projects/p539_crisprscope/03_genesForClustering/Cd-hit/nucleotide/allSpecies.txt -c 0.85
+    
+```
+
+move local to run on eggnog
+
+```{bash}
+mkdir -p /home/vincent/Projects//p539_crisprscope/03_genesForClustering/Cd-hit/protein/
+
+scp  vincent@130.223.51.116:/data/projects/p539_crisprscope/03_genesForClustering/Cd-hit/protein/allSpecies.txt /home/vincent/Projects//p539_crisprscope/03_genesForClustering/Cd-hit/protein/allSpecies.txt
+
+```
+
+
+
+#Defense mechansims
+put specific phage defense hmm into specified location for prokka annotation
+
+BREX system
+```{bash}
+mkdir -p /home/vincent/anaconda3/envs/PROKKA/db/hmm/
+scp /home/vincent/Desktop/Projects/2020_CRISPRscope/PROKKA_phage_defense_DB/BREX vincent@130.223.51.116:/home/vincent/anaconda3/envs/PROKKA/db/hmm/BREX.fasta
+
+```
+
+
+```{bash}
+
+cd /home/vincent/anaconda3/envs/PROKKA/db/hmm
+makeblastdb -dbtype prot -in BREX.fasta
+
+prokka --listdb
+
+/opt/prokka/db/hmm
+/home/vincent/anaconda3/envs/PROKKA/bin/prokka
+
+#conda create -n PROKKA
+conda activate PROKKA
+
+  num=1
+rm -r /data/projects/p539_crisprscope/02_PROKKA/PROKKA_naming.txt
+for speciesss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all)
+do
+echo "===================================="
+echo ${speciesss}
+mkdir -p /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/
+ for genomessss in $(ls /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss})
+ do
+ 
+ genome_short=$(echo ${genomessss}|sed 's/.fna//g')
+
+ rm -r /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/${genome_short}
+ 
+ #/usr/bin/perl /usr/bin/prokka
+prokka --cpus  35 --outdir /data/projects/p539_crisprscope/02_PROKKA/${speciesss}/${genome_short} --locustag A${num}  --proteins proteins.faa --evalue 0.001 --addgenes /data/projects/p539_crisprscope/01_data/20201219_all/${speciesss}/${genome_short}.fna
+
+echo -e "A"${num}"\t"${speciesss}"\t"${genome_short} >> /data/projects/p539_crisprscope/02_PROKKA/PROKKA_naming.txt
+ num=$((num+1))
+
+  done
+done
+
+
+```
+

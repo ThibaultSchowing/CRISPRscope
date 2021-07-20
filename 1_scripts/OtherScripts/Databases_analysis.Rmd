@@ -1,0 +1,191 @@
+---
+title: "Databases Analysis"
+author: "Thibault Schowing"
+date: "20/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+
+```{r}
+library("tidyverse")
+library(readr)
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+# https://community.rstudio.com/t/is-there-a-tidy-way-to-iterate-a-data-frame-tibble-and-produce-side-effects-based-on-the-value-of-each-row/52382/4
+library(slider)
+
+#install.packages("ggthemes") # Installer 
+library(ggthemes) # Charger
+
+library(ggplot2)
+
+# figure export
+library(htmlwidgets)
+library(orca)
+
+#åif (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("Biostrings")
+
+library(Biostrings)
+
+
+```
+
+
+
+# FCT
+
+```{r}
+read_fasta_tibble <- function(path){
+  dna <- readDNAStringSet(path)
+  dfdna <- dss2df(dna)
+  tbldna <- as_tibble(dfdna)
+  return(tbldna)
+}
+```
+
+
+
+# CRISPRCasFinderDB
+
+
+
+## Basic stats on CCFDB
+
+```{r}
+library(readr)
+CrisprCasFinderDB_dr_1_extended <- read_delim("C:/Users/thsch/Desktop/master_thesis/0_data/DB/CrisprCasFinderDB_dr_1_extended.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+
+#View(CrisprCasFinderDB_dr_1_extended)
+```
+
+
+
+### Numbers
+```{r}
+CrisprCasFinderDB_dr_1_extended %>% 
+  summarise(NbRepeats = n(), NbUniqueRepeats = n_distinct(sequence), NbUniqueSpecies = n_distinct(species))
+```
+
+
+
+### Plots
+```{r}
+CrisprCasFinderDB_dr_1_extended %>% summarise(Total_entries = n())
+
+CrisprCasFinderDB_dr_1_extended %>% 
+  count(class) %>% 
+  plot_ly(x = ~class, y = ~n, type = 'bar') %>%
+  layout(title = "Proportion of Cas types in CRISPRCasFinder Database",
+         xaxis = list(title = "Cas types", tickangle = 45),
+         yaxis = list(title = "Proportion"))
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# CRISPRmap
+
+## Basic stats on CRISPRmap DB
+
+
+
+```{r}
+CRISPRmap_fasta <- read_fasta_tibble("C:/Users/thsch/Desktop/master_thesis/0_data/DB/CRISPRmap/CRISPRmap_data.fa")
+
+
+```
+
+
+### Numbers
+
+```{r}
+CRISPRmap_fasta %>%
+  separate(names, c("species"), sep = "_") %>% 
+  summarise(NbRepeats = n(), NbUniqueRepeats = n_distinct(seq), NbUniqueSpecies = n_distinct(species))
+```
+
+
+
+### Plots
+
+
+
+
+
+## Comparison
+% because of the notation, it is difficult to compare how many species are different. With the first numbers we can already see that CCFDB is 3x bigger than CRISPRmap. 
+
+```{r}
+unique_CRISPRmapDR <- CRISPRmap_fasta %>% 
+  select(seq) %>% 
+  distinct(seq)
+
+unique_CCFDBDR <- CrisprCasFinderDB_dr_1_extended %>% 
+  select(seq = sequence) %>% 
+  distinct(seq)
+
+bind_rows(unique_CRISPRmapDR, unique_CCFDBDR) %>% 
+  summarise(NbRepeats = n(), NbUniqueRepeats = n_distinct(seq))
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

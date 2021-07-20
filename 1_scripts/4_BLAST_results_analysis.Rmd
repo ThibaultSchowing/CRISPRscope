@@ -1,0 +1,443 @@
+---
+title: "BLAST_results_analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Import packages
+```{r}
+
+library(tidyverse)
+library(ggpmisc)
+
+
+library(ggVennDiagram)
+
+
+# Load library
+#install.packages("VennDiagram")
+library(VennDiagram) #Caca
+
+# Prepare a palette of 2 colors with R colorbrewer:
+library(RColorBrewer)
+
+#Load
+library("jpeg")
+library("tiff")
+library("magick")
+
+
+library("seqRFLP") # dataframe2fas
+
+if(!require(devtools)) install.packages("devtools")
+devtools::install_github("kassambara/ggpubr")
+library(ggpubr)
+
+
+
+
+```
+
+
+
+
+
+
+
+#----------------------------------------------------
+#BLAST: Categories
+
+## Raw Data
+```{r}
+#--------------------------------------
+# IMPORT DATA
+#--------------------------------------
+
+# # IMPORTED FROM Eggnog PROTEIN HITS -> Taxid = Virus
+# # - 
+# load(paste(repository, "/0_data/IMPORT_EXPORT/bacterial_viral_protein_hits_list", sep=""))
+
+#--------------------------------------
+# IMG/VR
+
+CRISPRblast_IMGVR_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_IMGVR_vincent.txt", sep=""), 
+    "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
+                                               "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) %>% 
+  mutate(database = "IMGVR") %>% 
+  mutate(hit_type = "Viral") %>% 
+  select(qseqid, sseqid, pident, mismatch, stitle, database, hit_type)
+
+
+#--------------------------------------
+# PLSDB
+
+CRISPRblast_PLSDB_2 <- read_delim(paste(repository, "/0_data/IMPORT/PLSDB_Hits/CRISPRblast_plasmid.txt", sep=""), 
+    "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", 
+                                               "qend", "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) %>% 
+  mutate(database = "PLSDB") %>% 
+  mutate(hit_type = "Plasmid") %>% 
+  select(qseqid, sseqid, pident, mismatch, stitle, database, hit_type)
+
+#--------------------------------------
+# NCBI non redundant nucleotide collection
+
+CRISPRblast_nt_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_nt_vincent.txt", sep=""), 
+    "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
+                                               "sstart", "send", "evalue", "bitscore", "stitle", "slen", 
+                                               "staxid", "ssciname", "sskingdom", "staxids"), trim_ws = TRUE) %>% 
+  select(-staxid, -ssciname, -sskingdom, -staxids) %>% 
+  mutate(database = "nt") %>% 
+  mutate(hit_type = "Unassigned") %>%  # specialisation later
+  mutate(hit_type = ifelse(str_detect(stitle, 'phage|Phage'), "Viral", hit_type)) %>% 
+  mutate(hit_type = ifelse(str_detect(stitle, 'virus|Virus'), "Viral", hit_type)) %>% 
+  mutate(hit_type = ifelse(str_detect(stitle, 'plasmid|Plasmid'), "Plasmid", hit_type)) %>% 
+  #mutate(hit_type = ifelse(qseqid %in% bacterial_viral_protein_hits_list, "Viral", hit_type)) %>% # Eggnog 91 viral clusters -> do it later sequentially
+  select(qseqid, sseqid, pident, mismatch, stitle, database, hit_type)
+
+
+
+CRISPRblast_nt_2 %>% write_csv(file=paste(repository, "/0_data/IMPORT_EXPORT/Blast_nt_results_categories.csv", sep=""))
+
+
+
+
+
+# 
+# CRISPRblast_IMGVR_2
+# CRISPRblast_nt_2 
+# CRISPRblast_PLSDB_2
+```
+
+
+Merge the BLAST results, and complete the missing clusters with "no hit"
+
+```{r}
+
+#--------------------------------------
+# Assign correct hit type
+#--------------------------------------
+
+# We need a cluster - hit type table for all. 
+# Viral -> priority, we know it's a virus
+# Bacterial -> if in Plasmid -> it's plasmid Else -> it's bacterial 
+
+
+CRISPRblast_2 <- bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>% 
+  group_by(qseqid) %>% 
+  summarise(cluster = qseqid, hit_type = hit_type) %>% 
+  mutate(final_hit = ifelse("Viral" %in% hit_type %>% unlist(), 
+                            "Viral", 
+                            ifelse("Plasmid" %in% hit_type %>% unlist(),
+                                   "Plasmid",
+                                   "Unassigned"))) %>% 
+  ungroup() %>% 
+  select(cluster, final_hit) %>% 
+  distinct()
+
+#--------------------------------------
+# Get all clusters from the dataset (blast has additional sequences, because exported before filtering/all genomes)
+#--------------------------------------
+
+all_crisprscope_clusters <- bind_rows(CRISPRscope_tbl_185 %>% 
+                                        select(cluster_spacer_identity) %>% 
+                                        distinct() %>% arrange(cluster_spacer_identity), 
+                                      CRISPRscope_meta_tbl_filtered %>% 
+                                        select(cluster_spacer_identity) %>% 
+                                        arrange(cluster_spacer_identity)) %>% 
+  distinct() %>% 
+  arrange(cluster_spacer_identity) 
+
+
+# List of valid (in filtered datasets) cluster-category 
+CRISPRscope_blast_cluster_hit_type_2 <- CRISPRblast_2 %>% filter(cluster %in% (all_crisprscope_clusters %>% unlist()))
+
+
+# Complete with "no hit"
+CRISPRscope_blast_cluster_hit_type_2_completed <- bind_rows(CRISPRscope_blast_cluster_hit_type_2,
+                                                            all_crisprscope_clusters %>% 
+                                                              filter(!cluster_spacer_identity %in% CRISPRscope_blast_cluster_hit_type_2$cluster) %>% 
+                                                              mutate(final_hit = "No hit") %>% 
+                                                              dplyr::rename(cluster = cluster_spacer_identity))
+    # All clusters -> Viral Plasmid Unassigned or No hit 
+```
+
+
+
+
+
+
+
+
+
+
+BLAST: nr
+Results from Spacers BLAST against nr
+Accession numbers were sent to entrez-batch to retrieve accession number related information.
+Due to failures on entrez' side, a set of proteins sequences couldn't be retreived (in /0_data/EXPORT/BLASTnr_accession_list_fail_1.txt)
+
+GENERATE QUERY for Entrez
+```{r}
+CRISPRblast_nr_03 <- read_delim(paste(repository, "/0_data/IMPORT/Blast_nr_hits/CRISPRblast_nr_03.txt", sep=""), 
+    "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
+                                               "sstart", "send", "evalue", "bitscore", "stitle", "slen"), 
+    trim_ws = TRUE)
+
+# Get protein accession ID from Blast result.
+# CLUSTER ID / SSEQID 
+BLASTnr_sseqid_qseqid <- CRISPRblast_nr_03 %>% select(qseqid,sseqid) %>%
+  mutate(sseqid = paste("|", sseqid, sep="")) %>%
+  separate(sseqid, into = c("1" ,"DB","accessionID", "2"), sep = "[|]") %>%
+  select(DB,accessionID, qseqid)
+
+BLASTnr_sseqid_qseqid %>% write_delim(file = paste(repository, "/0_data/EXPORT/BLASTnr_accession_list.txt", sep=""), col_names = F, delim="\n")
+
+# Get failed attempts -> Retry on Entrez-batch -> all failed to be retrieved = 1984 entries
+#entrez_batch_fail_1 %>% write_delim(file = paste(repository, "/0_data/BLASTnr/BLASTnr_accession_list_fail_1.txt", sep=""), col_names = F, delim="\n")
+
+```
+
+Protein fasta sequences were then downloaded from NCBI (via entrez results) and sent to Eggnog-mapper (http://eggnog-mapper.embl.de/)
+
+```{r}
+MM_ug5vlsop_emapper_annotations <- read_delim(paste(repository, "/0_data/Eggnog_results/MM_ug5vlsop.emapper.annotations.tsv", sep=""), 
+    "\t", escape_double = FALSE, trim_ws = TRUE, 
+    skip = 4)  %>%  dplyr::slice(1:(n()-3))
+#View(MM_ug5vlsop_emapper_annotations)
+
+
+Eggnog_results <- MM_ug5vlsop_emapper_annotations %>% 
+  separate(`#query`, into = c("DB1","accessionID1", "DB2", "accessionID2"), sep = "[|]", remove = F) 
+
+```
+
+
+We then need to link back the eggnog accession numbers to our cluster numbers
+and keep only sequences marked as viral. 
+
+```{r}
+# Clusters with hits but unassigned (bacterial but probably targeting a CRISPR)
+BLAST_unassigned_clusters <- CRISPRscope_blast_cluster_hit_type_2 %>% filter(final_hit == "Unassigned")
+
+# The unassigned clusters that have a protein  match in the Eggnog results
+unassigned_hits_protein_annot <- BLASTnr_sseqid_qseqid %>% filter(qseqid %in% BLAST_unassigned_clusters$cluster) %>% 
+  inner_join(Eggnog_results, by=c("DB" = "DB2", "accessionID" = "accessionID2")) # 480 rows
+
+
+# From these annotations, we get the ones belonging to a viral taxid -> change from Unassigned to Viral
+unassigned_viral_protein_hits <- unassigned_hits_protein_annot %>% 
+  separate(max_annot_lvl, into = c("taxid?", "Level"), sep = "[|]") %>% 
+  filter(Level == "Myoviridae" | 
+           Level == "Viruses" | 
+           Level == "Siphoviridae" | 
+           Level == "Caudovirales" | 
+           Level == "Podoviridae" | 
+           Level == "Microviridae" | 
+           Level == "Nidovirales")
+
+unassigned_viral_protein_hits_list <- unassigned_viral_protein_hits %>% select(qseqid) %>% unlist()
+```
+
+
+Apply the new viral proteins to the cluster-hit category data.
+90 unassigned sequences are now assigned to Viruses
+```{r}
+#
+# Mutate final_hit for protein annotated found in viral proteins. 
+#
+#CRISPRscope_blast_cluster_hit_type_2 %>% count(final_hit) # Plasmid 2049 / Unassigned 14463 / Viral 22821
+CRISPRscope_blast_cluster_hit_type_2 <- CRISPRscope_blast_cluster_hit_type_2 %>% 
+  mutate(final_hit = ifelse(cluster %in% unassigned_viral_protein_hits_list, "Viral", final_hit))
+#CRISPRscope_blast_cluster_hit_type_2 %>% count(final_hit) # Plasmid 2049 / Unassigned 14373 / Viral 22911
+
+```
+
+
+
+
+For the rest of the protein sequences: they are still unassigned -> bacteria ? CRISPR ?
+
+
+
+we can identify what they target using batch entrez and the GI accession. 
+
+```{r}
+# Generate the GI accession IDs list of non-viral proteins
+# DB1 and accessionID1 contain the GI accessions.
+# Qseqid contains the cluster number. 
+
+unassigned_hits_protein_annot_noviral <- unassigned_hits_protein_annot %>% 
+  separate(max_annot_lvl, into = c("taxid?", "Level"), sep = "[|]") %>% 
+  filter(!Level %in% unassigned_viral_protein_hits_list)
+
+
+unassigned_hits_protein_annot_noviral %>% 
+  select(accessionID1) %>% 
+  arrange(accessionID1) %>% distinct() %>% 
+  write_delim(file = paste(repository, "/0_data/EXPORT/unassigned_hits_protein_annot_noviral.lst", sep=""), col_names = F)
+
+
+
+# Use Entrez-batch and retrive the summary
+
+
+
+
+```
+
+
+
+
+
+
+
+
+TODO: Lists with Plasmids and CRISPRs
+
+```{r}
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Formating - cluster/hit-type
+
+
+```{r}
+#--------------------------------------
+# Assign correct hit type
+#--------------------------------------
+
+# We need a cluster - hit type table for all. 
+# Viral -> priority, we know it's a virus
+# Bacterial -> if in Plasmid -> it's plasmid Else -> it's bacterial 
+
+
+CRISPRblast_2 <- bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>% 
+  group_by(qseqid) %>% 
+  summarise(cluster = qseqid, hit_type = hit_type) %>% 
+  mutate(final_hit = ifelse("Viral" %in% hit_type %>% unlist(), 
+                            "Viral", 
+                            ifelse("Plasmid" %in% hit_type %>% unlist(),
+                                   "Plasmid",
+                                   "nt hit"))) %>% 
+  ungroup() %>% 
+  select(cluster, final_hit) %>% 
+  distinct()
+
+#--------------------------------------
+# Get all clusters from the dataset (blast has additional sequences, because exported before filtering/all genomes)
+#--------------------------------------
+
+all_crisprscope_clusters <- bind_rows(CRISPRscope_tbl_185 %>% 
+                                        select(cluster_spacer_identity) %>% 
+                                        distinct() %>% arrange(cluster_spacer_identity), 
+                                      CRISPRscope_meta_tbl_filtered %>% 
+                                        select(cluster_spacer_identity) %>% 
+                                        arrange(cluster_spacer_identity)) %>% 
+  distinct() %>% 
+  arrange(cluster_spacer_identity) 
+
+
+# List of valid (in filtered datasets) cluster-category 
+CRISPRscope_blast_cluster_hit_type_2 <- CRISPRblast_2 %>% filter(cluster %in% (all_crisprscope_clusters %>% unlist()))
+
+# Complete with "no hit"
+CRISPRscope_blast_cluster_hit_type_2_completed <- bind_rows(CRISPRscope_blast_cluster_hit_type_2,
+                                                            all_crisprscope_clusters %>% 
+                                                              filter(!cluster_spacer_identity %in% CRISPRscope_blast_cluster_hit_type_2$cluster) %>% 
+                                                              mutate(final_hit = "No hit") %>% 
+                                                              dplyr::rename(cluster = cluster_spacer_identity))
+
+
+#--------------------------------------
+# Types ordering
+#--------------------------------------
+
+hit_type_order_2 <- c("No hit" ,"Bacterial", "Plasmid", "Viral")
+
+
+#--------------------------------------
+# Take bacterial/unsure nt assignation and join to sseqid
+#--------------------------------------
+CRISPRscope_blast_cluster_hit_type_2_completed %>% filter(final_hit == "nt hit") %>% 
+  left_join(CRISPRblast_nt_2 %>% select(qseqid, sseqid, stitle), by=c("cluster" = "qseqid")) %>%
+  separate(sseqid, into = c("DB1","accessionID1", "DB2", "accessionID2"), sep = "[|]", remove = F) %>% 
+  write_csv(file = paste(repository, "/0_data/EXPORT/BLAST_Nohit_target_id.csv", sep=""))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

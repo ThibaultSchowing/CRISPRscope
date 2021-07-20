@@ -1,0 +1,4598 @@
+---
+title: "Dialact_analysis.rmd"
+author: "Thibault Schowing"
+date: "19/10/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Dialact CRISPR analysis
+
+
+Available CRISPRCasFinder results: 
+- Lactobacillus_delbrueckii
+- Streptococcus_thermophilus
+- Leuconostoc_mesenteroides (No lvl 4 CRISPR array)
+- Lactobacillus_rhamnosus
+- Marinilactibacillus_psychrotolerans
+- Propionibacterium_freudenreichii
+
+
+Packages and global variables
+
+```{r}
+library(tidyverse)
+library(readr)
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+# https://community.rstudio.com/t/is-there-a-tidy-way-to-iterate-a-data-frame-tibble-and-produce-side-effects-based-on-the-value-of-each-row/52382/4
+library(slider)
+
+#install.packages("ggthemes") # Installer 
+library(ggthemes) # Charger
+
+library(ggplot2)
+
+# figure export
+library(htmlwidgets)
+library(orca)
+
+# For melt() in custom heatmap
+#install.packages("reshape")
+library(reshape)
+
+#åif (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("Biostrings")
+
+library(Biostrings)
+
+
+# Converts dataframe to fasta file
+#install.packages("seqRFLP")
+library("seqRFLP")
+
+# For marginal densities
+#install.packages("ggExtra")
+library(ggExtra)
+
+# for pseudo_log_trans(sigma = 1, base = exp(1))
+library(scales)
+
+
+library(gridExtra)
+library(cowplot)
+library(egg)
+
+```
+
+
+## Data handling Functions definition
+
+
+```{r}
+# Base location
+data_folder <- "C:/Users/thsch/Desktop/master_thesis/2_crisprCasFinder/Parsed_Output"
+```
+
+### Read spacer csv
+```{r}
+#
+# Read the organism data (Spacers info)
+# Input: species name and source (NCBI or DIALACT Databases)
+#
+read_spacers_data <- function(species, source = "DIALACT"){
+  if(source == "DIALACT"){
+    t <- read_delim(paste(data_folder, "/", species ,"/", source, "/", species, "_PerSpacer_CRISPR_v1.csv", sep = ""), 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE) %>% 
+    mutate(tmp = ArrayID) %>% 
+    separate(tmp, c("Strain", "Scaffold", "Array"), sep = "_") %>%
+    relocate(Strain, .before = "ShortID") %>% 
+    relocate(Scaffold, .before = "ShortID") %>% 
+    relocate(Array, .before = "ShortID") %>% 
+    relocate(ArrayID, .before = "ShortID")
+  }
+  #TODO
+  if(source == "NCBI"){
+    t <- read_delim(paste(data_folder, "/", species ,"/", source, "/", species, "_PerSpacer_CRISPR_v1.csv", sep = ""), 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE) %>% 
+    mutate(tmp = ArrayID) %>% 
+    separate(tmp, c("Strain", "Scaffold1", "Scaffold2", "Array"), sep = "_") %>%
+    unite(Scaffold, c("Scaffold1", "Scaffold2"), sep = "", remove = TRUE, ) %>% 
+    relocate(Strain, .before = "ShortID") %>% 
+    relocate(Scaffold, .before = "ShortID") %>% 
+    relocate(Array, .before = "ShortID") %>% 
+    relocate(ArrayID, .before = "ShortID")
+  }
+  
+  
+  
+  return(t)
+}
+
+#Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+
+```
+
+
+```{r}
+#
+# Add to each spacer the relative distance from the leader (or NA if the direction is not set) (0 close to leader, 1 far from leader)
+#
+add_reldist_leader <- function(input_tibble){
+  return(input_tibble %>% 
+           add_count(ArrayID, name = "NbSpacerInArray") %>%
+           mutate(rel_dist_leader = ifelse(Orientation == "+", SpacerNb/(NbSpacerInArray-1), -1 * (SpacerNb - NbSpacerInArray + 1) / (NbSpacerInArray-1))) %>%
+           mutate(rel_dist_leader = ifelse(Orientation == "ND", NA, rel_dist_leader)) %>% 
+           mutate(rel_dist_leader = ifelse(NbSpacerInArray == 1, NA, rel_dist_leader)))
+}
+
+# Update: removed  "filter(EvidenceLvl > 3) "
+
+
+#
+# Convert the array id string to sequence string (removes the _x)
+#
+array_to_sequence <- function(s){
+  return(gsub("_[0-9]+$", "", s))
+}
+
+# DEPRECATED: the datasets are modified to include the SequenceID for all 
+# add the Sequence ID in the spacer df (from the array ID)
+#
+add_array_id <- function(input_tibble){
+  output_tibble <- input_tibble %>% 
+    mutate(SequenceID = array_to_sequence(ArrayID))
+  return(output_tibble)
+}
+```
+
+### Read cas type data (CCF)
+```{r}
+#
+# Read the CasType dataset
+#
+
+read_casType_data <- function(species, source = "DIALACT"){
+  return(read_delim(paste(data_folder, "/", species ,"/", source,"/", species, "_CasType_v1.csv", sep = ""), 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE) %>% 
+      separate(SequenceID, c("tmp", "Scaffold"), sep = "_") %>% 
+      select(-tmp))
+}
+```
+
+
+### Read gene data
+```{r}
+#
+# Get the genes detected by CRISPRCasFinder
+#
+read_gene_data <- function(species, source = "DIALACT"){
+  return(read_delim(paste(data_folder, "/", species ,"/", source,"/", species, "_Cas_genes_v1.csv", sep = ""),
+                    ";",
+                    escape_double = FALSE,
+                    col_names = TRUE)%>% 
+      separate(SequenceID, c("tmp", "Scaffold"), sep = "_") %>% 
+      select(-tmp))
+}
+```
+
+
+
+```{r}
+#
+# Converts dna string set to dataframe
+#
+dss2df <- function(dss) data.frame(length=width(dss), seq=as.character(dss), names=names(dss))
+```
+
+
+### DR fasta
+
+```{r}
+
+#
+# read a fasta file into a tibble
+#
+#TODO: maybe need to clarify how we read the files -> give the path in parameter instead ?
+read_DR_fasta_tibble <- function(species, source = "DIALACT") {
+  fastafile = paste(data_folder,
+                    "/",
+                    species ,
+                    "/",
+                    source,
+                    "/",
+                    species,
+                    "_DR_v1.fasta",
+                    sep = "")
+  
+  dna <- readDNAStringSet(fastafile)
+  dfdna <- dss2df(dna)
+  tbldna <- as_tibble(dfdna)
+  
+  print(tbldna)
+  
+  if (source == "DIALACT") {
+    print("Source: DIALACT")
+    tbldna <- tbldna %>%
+      separate(names, c("names", "Array"), sep = '_(?=[0-9]+$)') %>%
+      separate(names, c("names", "Scaffold"), sep = '_(?=[[:alnum:]]+$)') %>%
+      separate(names, c("names", "Strain"), sep = '_(?=[[:alnum:]-]+$)') %>%
+      mutate(Organism = names) %>%
+      select(-names) %>%
+      relocate(Organism, .before = "Strain") %>%
+      relocate(seq, .after = "Array") %>%
+      relocate(length, .after = "seq")
+  }
+  
+  if (source == "NCBI") {
+    print("Source: NCBI")
+    tbldna <- tbldna %>%
+      separate(names, c("names", "Array"), sep = '_(?=[0-9]+$)') %>%
+      separate(names, c("names", "Scaffold1"), sep = '_(?=[[:alnum:]]+$)') %>%
+      separate(names, c("names", "Scaffold2"), sep = '_(?=[[:alnum:]]+$)') %>%
+      unite(Scaffold, c("Scaffold2","Scaffold1"), sep = "") %>% 
+      separate(names, c("names", "Strain"), sep = '_(?=[[:alnum:].]+$)') %>%
+      mutate(Organism = names) %>%
+      select(-names) %>%
+      relocate(Organism, .before = "Strain") %>%
+      relocate(seq, .after = "Array") %>%
+      relocate(length, .after = "seq")
+    
+    
+  }
+  print("after")
+  print(tbldna)
+  
+  return(tbldna)
+}
+
+
+#Lactobacillus_casei_DR = read_DR_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+
+#Lactobacillus_delbrueckii_subsp_lactis_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+#Lactobacillus_delbrueckii_subsp_lactis_DR
+```
+
+
+### Spacer fasta
+```{r}
+#TODO: seriously sometime, rename this Spacers instead of CRISPR
+#
+# Read the spacer fasta fila and returns a tibble
+#
+read_Spacers_fasta_tibble <- function(species, source = "DIALACT"){
+  fastafile = paste(data_folder, "/", species ,"/", source,"/", species, "_CRISPR_v1.fasta", sep = "")
+  dna <- readDNAStringSet(fastafile)
+  dfdna <- dss2df(dna)
+  tbldna <- as_tibble(dfdna) 
+  
+  
+  if(source == "DIALACT"){
+    tbldna <- tbldna %>%
+    separate(names, c("names", "Spacer"), sep='_(?=[0-9]+$)') %>%
+    separate(names, c("names", "Array"), sep='_(?=[0-9]+$)') %>% 
+    separate(names, c("names", "Scaffold"), sep='_(?=[[:alnum:]]+$)')%>% 
+    separate(names, c("names", "Strain"), sep='_(?=[[:alnum:]-]+$)') %>% 
+    separate(names, c("names", "Orientation"), sep='_(?=[[:alnum:]+-]+$)') %>% 
+    mutate(Organism = names) %>% 
+    select(-names) %>% 
+    relocate(Organism, .before = "Strain") %>% 
+    relocate(seq, .after = "Array") %>% 
+    relocate(length, .after = "seq") %>% 
+      relocate(Orientation, .after = "Array")
+  }
+    
+  if(source == "NCBI"){
+        tbldna <- tbldna %>%
+    separate(names, c("names", "Spacer"), sep='_(?=[0-9]+$)') %>%
+    separate(names, c("names", "Array"), sep='_(?=[0-9]+$)') %>% 
+    separate(names, c("names", "Scaffold1"), sep='_(?=[[:alnum:]]+$)')%>% 
+    separate(names, c("names", "Scaffold2"), sep='_(?=[[:alnum:]]+$)')%>% 
+      unite(Scaffold, c("Scaffold2","Scaffold1"), sep = "") %>% 
+    separate(names, c("names", "Strain"), sep='_(?=[[:alnum:].]+$)') %>% 
+    separate(names, c("names", "Orientation"), sep='_(?=[[:alnum:]+-]+$)') %>% 
+    mutate(Organism = names) %>% 
+    select(-names) %>% 
+    relocate(Organism, .before = "Strain") %>% 
+    relocate(seq, .after = "Array") %>% 
+    relocate(length, .after = "seq") %>% 
+      relocate(Orientation, .after = "Array")
+  }
+    
+
+
+  return(tbldna)
+}
+
+
+#Lactobacillus_casei_Spacers = read_Spacers_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+#Lactobacillus_delbrueckii_subsp_lactis_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+#Lactobacillus_delbrueckii_subsp_lactis_Spacers
+
+```
+
+
+
+# Basic stats FCT
+
+TODO: number of arrays (if any!!), number of spacers, cas types
+
+```{r}
+#
+#
+#
+get_DR_info <- function(input_tibble){
+  input_tibble %>% 
+  summarise(unique_dr = n_distinct(seq),      # Number of unique repeats
+            total_dr = n(),                   # Total number of repeats, matches with the total number of arrays
+            min_length = min(length),         # Minimum repeat length
+            max_length = max(length),         # Maximum repeat length
+            mean_length = mean(length),       # Mean repeat length
+            median_length = median(length),   # Median repeat length
+            sd_length = sd(length),           # Standart deviation of repeat lengths
+            iqr_length = IQR(length))         # Inter Quartile Range of repeat lengths
+}
+
+#
+#
+#
+get_spacers_info <- function(input_tibble){
+  input_tibble %>% 
+  summarise(unique_spacers = n_distinct(seq), # Number of unique spacers
+            total_spacers = n(),              # Total number of spacers
+            min_length = min(length),         # Minimum spacers length
+            max_length = max(length),         # Maximum spacers length
+            mean_length = mean(length),       # Mean spacers length
+            median_length = median(length),   # Median spacers length
+            sd_length = sd(length),           # Standart deviation of spacers lengths
+            iqr_length = IQR(length))         # Inter Quartile Range of spacers lengths
+}
+```
+
+
+
+
+## Plot cluster size
+```{r}
+#
+# Plot the cluster size / amount of cluster with size n
+#
+plot_cluster_sizes <- function(input_v2){
+  
+  # Removes NA and create a summary of the dataset grouped by cluster (min, max and count)
+  Lb_dist <- input_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  group_by(cluster) %>% 
+  summarise(min = min(rel_dist_leader), mean = mean(rel_dist_leader), max = max(rel_dist_leader), NbSpacers = n()) %>% 
+  count(NbSpacers)
+
+  # Create the axis
+  upper=max(Lb_dist$NbSpacers)
+  lower=1
+  v <- c(lower:upper)
+  
+  
+  compl <- Lb_dist %>% 
+    complete(NbSpacers = v, fill = list(n = 0)) %>% 
+    ggplot(aes(x = NbSpacers, y = n)) + 
+    geom_bar(stat='identity', fill=rgb(0.1,0.4,0.5,0.7)) +
+    ggtitle("Cluster size") +
+    xlab("Cluster size") +
+    ylab("# of cluster") + 
+    theme( axis.line = element_line(colour = "darkblue", size = .5, linetype = "solid"))
+  compl
+
+}
+
+
+
+
+
+```
+
+## FCT Distances within clusters
+```{r}
+# Cluster: 80% similarity between the spacers
+# Cluster size: are many spacers very common (big clusters) or unique (smallclusters)
+# Distance: are similar clusters usually at the same relative distance from the leader ?
+# How does the distance vary in the clusters ?
+# -> we see that the average distance from the leader does not depend at all on the cluster size 
+# (cluster size = a lot / a few similar other spacer -> rare or not spacers). 
+
+clusterSizeMeanDist <- function(input_tibblev2){
+  d2 <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>%
+    group_by(cluster) %>% 
+    mutate(varDist = sd(rel_dist_leader), avgDist = mean(rel_dist_leader), NbSpacers = n()) %>% 
+    ggplot(aes(x=NbSpacers, y=avgDist)) +
+    geom_point(alpha=0.1) + 
+    theme_bw()
+  d2
+}
+
+
+
+
+clusterSizeVarDist <- function(input_tibblev2){
+  d2 <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>%
+    group_by(cluster) %>% 
+    mutate(varDist = sd(rel_dist_leader), avgDist = mean(rel_dist_leader), NbSpacers = n()) %>% 
+    ggplot(aes(x=NbSpacers, y=varDist)) +
+    geom_point(alpha=0.1) + 
+    theme_bw()
+  d2
+}
+
+
+
+
+clusterSizeMeanDist <- function(input_tibblev2){
+  d2 <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>%
+    group_by(cluster) %>% 
+    mutate(varDist = sd(rel_dist_leader), avgDist = mean(rel_dist_leader), NbSpacers = n()) %>% 
+    ggplot(aes(x=NbSpacers, y=avgDist)) +
+    geom_point(alpha=0.1) + 
+    theme_bw()
+  d2
+}
+
+
+```
+
+
+Explore a cluster
+```{r}
+#Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2 %>% filter(cluster == 95)
+```
+
+
+## FCT Cluster distance variance (nice)
+```{r}
+#
+# Plots the variance of the distances within each clusters. 
+#
+clst_dist_variance <- function(input_tibblev2){
+  
+  sd_rel_dist_leader <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(cluster) %>% 
+    mutate(DistVariance = sd(rel_dist_leader)) 
+  #View(sd_rel_dist_leader)
+  
+  plt <- sd_rel_dist_leader %>% 
+    group_by(cluster) %>% 
+    ggplot(aes(x = DistVariance, fill = ..x..)) + 
+    geom_histogram(binwidth = 0.01)+
+    ggtitle("Variance of the relative distance from the leader within similar spacers cluster") +
+    xlab("Standard Deviation") +
+    ylab("Clusters") +
+    scale_fill_gradient2(low='orange', mid='red', high='white', midpoint=0.5,name= 'SD', trans = "log2") + scale_colour_calc() +
+    theme(axis.title.x = element_text(colour = "grey"),
+          axis.title.y = element_text(colour = "grey"),
+          axis.text = element_text(colour = "grey"),
+          plot.title = element_text(colour = "grey"),
+          panel.grid.major = element_line(size = 0.5,
+                                          linetype = 'solid',
+                                          colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25,
+                                          linetype = 'solid',
+                                          colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA)
+    )
+  
+  
+  ggsave(plot = plt, file = "graphasdf.png", 
+       type = "cairo-png",  bg = "transparent",
+       width = 25, height = 15, units = "cm", dpi = 800)
+  #NA's are removed for arrays with out relative distances but remains later if the array has only 1 element (SD formula gives a 0/0 if only one element)
+  # For Lb_delbruekii we can see that the variance is rarely over 0.2
+  
+  plt
+}
+
+
+
+#clst_dist_variance(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+#clusterSizeVarDist(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+#clst_dist_variance(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+  
+```
+
+
+
+
+
+
+
+
+Mean distance within cluster
+
+
+```{r}
+#
+# 
+#
+clst_dist_mean <- function(input_tibblev2){
+  mean_rel_dist_leader <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(cluster) %>% 
+    mutate(DistMean = mean(rel_dist_leader)) 
+  
+  plt <- mean_rel_dist_leader %>% 
+    group_by(cluster) %>% 
+    ggplot(aes(x = DistMean)) + 
+    geom_histogram(binwidth = 0.01)+
+      ggtitle("Mean of the relative distance from the leader within spacers cluster") +
+      xlab("Mean distance from the leader") +
+      ylab("Clusters") + 
+      theme( axis.line = element_line(colour = "darkblue", size = .5, linetype = "solid"))
+  
+  ggplotly(plt)
+  
+  #NA's are removed for clusters without distances. Mean does not produce NA as clusters with 1 element still have a mean (not like with SD)
+  # For Lb_delbruekii we can see that the variance is rarely over 0.2
+  
+}
+
+#clst_dist_mean(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+
+```
+It confirms that the similar spacers are usually close to each others, if they were placed at random or opposite, we would see a more normal distribution with a peak at the center. 
+
+
+
+
+
+Summary function: plot or give useful numbers (check todo's)
+## TODO FCT summary
+```{r}
+#
+# TODO: a nice summary function
+#
+sumitup <- function(input_v1){
+  nbSpacers <- input_v1 %>% tally()
+  print("Spacers summary: ")
+  print(paste("Number of spacers: ", nbSpacers, sep = ""))
+  
+  nbSpacers4 <- input_v1 %>% filter(EvidenceLvl > 3) %>% tally()
+  print(paste("Including ", nbSpacers4, " spacers of confidence level 4.", sep = ""))
+}
+
+
+#sumitup(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v1)
+```
+
+
+
+
+## FCT Cas
+
+```{r}
+
+showCasTypes <- function(input_cas_v1){
+  input_cas_v1 %>% count(CasType)
+}
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+## FCT Duplicated spacers
+
+```{r}
+#
+# Duplicated spacers
+#
+
+
+get_duplicated_spacers <- function(input_tibble){
+    # Array | sequence | number of time the sequence appears in the array
+  duplicated_spacers <- input_tibble %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(ArrayID) %>% 
+    add_tally(n_distinct(SpacerSeq), name = "Nb_unique_seq") %>% 
+    ungroup(ArrayID) %>% 
+    count(ArrayID, SpacerSeq) %>% 
+    filter(n > 1)
+  return(duplicated_spacers)
+}
+
+
+
+get_duplicated_spacers_position <- function(input_tibble){ 
+  # Informations about the position of the sequences appearing more than once in an array (result: they DO NOT always follow each other) 
+  duplicated_spacers_position <- input_tibble %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(ArrayID) %>% 
+    add_tally(n_distinct(SpacerSeq), name = "Nb_unique_seq") %>% 
+    ungroup(ArrayID) %>% 
+    count(ArrayID, SpacerSeq) %>% 
+    filter(n > 1) %>% 
+    left_join(input_tibble, by = c("SpacerSeq", "ArrayID")) %>% 
+    select(ArrayID, SpacerSeq, SpacerNb, rel_dist_leader)
+  return(duplicated_spacers_position)
+}
+
+
+get_duplicated_spacers_pos_diff <- function(input_tibble){
+  # Now get the difference in position and the difference of distance. Are the duplicated spacers next to eachother? (position in the array) => only when 2 identical spacers
+  # And what the difference in relative distance?
+  
+  duplicated_spacers_pos_diff <- input_tibble %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    count(ArrayID, SpacerSeq) %>% 
+    filter(n == 2) %>% 
+    left_join(input_tibble, by = c("SpacerSeq", "ArrayID")) %>% 
+    select(ArrayID, SpacerSeq, SpacerNb, rel_dist_leader, NbSpacerInArray) %>% 
+    group_by(ArrayID, SpacerSeq) %>%
+    summarise(DistBetweenSpacers = abs(diff(SpacerNb)), RelDistDiff = abs(diff(rel_dist_leader)), mean(NbSpacerInArray), duplicates = n()) 
+  return(duplicated_spacers_pos_diff)
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+## FCT Arrays analysis
+
+
+```{r}
+#
+# Plots the array sizes and the number of array with this size. COlored by DR clusters.
+#
+arraySizeDR <- function(input_tibblev2){
+  
+  # complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  
+  d2 <- input_tibblev2 %>% 
+  mutate(DR_cluster = as_factor(DR_cluster)) %>% 
+  count(DR_cluster, ArrayID) %>% 
+  count(DR_cluster, n) %>% 
+  replace_na(list(nn = 0))
+
+fig2 <- plot_ly(d2, x = ~n, y = ~nn, type = 'bar', color = ~DR_cluster, colors = "Set1")
+fig2 <- fig2 %>% layout(title = "Number of array with n spacers / clustered by Direct Repeats", yaxis = list(title = 'Count'),  barmode = 'stack', legend = list(title=list(text='<b> Cluster ID </b>')))
+fig2
+}
+
+
+
+
+```
+
+
+
+
+#----------------------------------------------
+# Organism analysis
+#----------------------------------------------
+
+
+# Main dataframes
+
+Create the different empty dataframes. For each species, bind the rows and in the end join (With DR) / plot them in one go. 
+
+```{r}
+Dialact_CRISPRscope_spacers <- tibble()
+Dialact_spacers <- tibble()
+Dialact_repeats <- tibble()
+Dialact_cas <- tibble()
+
+Dialact_genes <- tibble()
+
+# Done at the end: join Dialact_crisprsocpe_spacer with Dialact_repeats 
+```
+
+
+#----------------------------------------------
+
+
+
+## Lactobacillus delbrueckii (DIALACT)
+
+Dialact taxid: 1584
+
+
+```{r, echo=FALSE}
+# Lactobacillus_delbrueckii
+
+Lactobacillus_delbrueckii_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii")
+Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v1)
+
+Lactobacillus_delbrueckii_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii")
+
+Lactobacillus_delbrueckii_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii")
+
+Lactobacillus_delbrueckii_CasType_v1 <- read_casType_data("Lactobacillus_delbrueckii")
+
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+# missing repeats: FAM24786-i1-1
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_delbrueckii_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_delbrueckii_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_delbrueckii_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_delbrueckii"))
+```
+
+
+```{r}
+#arraySizeDR(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+```
+
+
+```{r}
+#plot_cluster_sizes(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+```
+
+
+
+Trend: Most clusters have only a few similar sequences (0-10). Clusters with a high number of similar sequences are rare. In other words, spacers are usually very different from eachother. 
+
+Analysis of the distances (Spacer-leader) within the clusters:
+
+```{r}
+# clusterSizeVarDist(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+# clusterSizeMeanDist(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+```
+
+What is the spacers abundance in an array? Are spacers present more than once? 
+
+```{r}
+# get_duplicated_spacers(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+# get_duplicated_spacers_position(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+# get_duplicated_spacers_pos_diff(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+```
+
+
+```{r}
+#showCasTypes(Lactobacillus_delbrueckii_CasType_v1)
+```
+
+
+
+
+
+
+
+
+## Lactobacillus delbrueckii subsb. lactis (DIALACT)
+
+Dialact taxid: 29397
+
+Are combined to Lactobacillus delbrueckii
+
+```{r}
+# Lactobacillus_delbrueckii_subsb_lactis
+
+Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+
+
+Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_v1)
+
+Lactobacillus_delbrueckii_subsp_lactis_CasType_v1 <- read_casType_data("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+
+
+
+Lactobacillus_delbrueckii_subsp_lactis_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+
+
+Lactobacillus_delbrueckii_subsp_lactis_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+
+
+Lactobacillus_delbrueckii_subsp_lactis_gene = read_gene_data("Lactobacillus_delbrueckii_subsp_lactis")
+
+# COMBINE TO SPECIES (ignore subsp)
+Lactobacillus_delbrueckii_subsp_lactis_Spacers$Organism = "Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_lactis_DR$Organism = "Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_lactis_CasType_v1$Organism = "Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2$Organism = "Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_lactis_gene$Organism = "Lactobacillus_delbrueckii"
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_delbrueckii_subsp_lactis_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_delbrueckii_subsp_lactis_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_delbrueckii_subsp_lactis_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+
+Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_delbrueckii_subsp_lactis_gene)
+```
+
+
+```{r}
+#arraySizeDR(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+```
+
+```{r}
+
+
+
+#plot_cluster_sizes(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+
+
+
+```
+
+
+
+Analysis of the distances (Spacer-leader) within the clusters:
+
+```{r}
+#clusterSizeVarDist(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+#clusterSizeMeanDist(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+```
+
+
+```{r}
+# get_duplicated_spacers(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+# get_duplicated_spacers_position(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+# get_duplicated_spacers_pos_diff(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+```
+
+
+
+
+
+## Lactobacillus delbrueckii subsp. bulgaricus (DIALACT) 
+
+Dialact taxid: 1585
+
+```{r}
+# Lactobacillus_delbrueckii_subsp_bulgaricus
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii_subsp_bulgaricus")
+Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_v1)
+
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_CasType_v1 <- read_casType_data("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_gene = read_gene_data("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+# COMBINE SPECIES 
+Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_V2$Organism="Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_bulgaricus_DR$Organism="Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_bulgaricus_Spacers$Organism="Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_bulgaricus_CasType_v1$Organism="Lactobacillus_delbrueckii"
+Lactobacillus_delbrueckii_subsp_bulgaricus_gene$Organism="Lactobacillus_delbrueckii"
+
+
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_delbrueckii_subsp_bulgaricus_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_delbrueckii_subsp_bulgaricus_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_delbrueckii_subsp_bulgaricus_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_V2)
+
+Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_delbrueckii_subsp_bulgaricus_gene)
+```
+
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus rhamosus (DIALACT) 
+
+Taxid Dialact: 47715 
+
+```{r}
+# Lactobacillus_rhamnosus
+
+Lactobacillus_rhamnosus_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_rhamnosus")
+Lactobacillus_rhamnosus_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_rhamnosus_PerSpacer_CRISPR_v1)
+
+Lactobacillus_rhamnosus_CasType_v1 <- read_casType_data("Lactobacillus_rhamnosus")
+
+
+Lactobacillus_rhamnosus_DR = read_DR_fasta_tibble("Lactobacillus_rhamnosus")
+
+
+Lactobacillus_rhamnosus_Spacers = read_Spacers_fasta_tibble("Lactobacillus_rhamnosus")
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_rhamnosus_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_rhamnosus_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_rhamnosus_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_rhamnosus_PerSpacer_CRISPR_V2)
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_rhamnosus"))
+
+```
+
+
+
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus helveticus (DIALACT) 
+
+Dialact taxid: 1587
+
+
+```{r, echo=FALSE}
+# Lactobacillus_helveticus
+
+Lactobacillus_helveticus_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_helveticus")
+Lactobacillus_helveticus_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactobacillus_helveticus_PerSpacer_CRISPR_v1)
+
+Lactobacillus_helveticus_CasType_v1 <- read_casType_data("Lactobacillus_helveticus")
+
+
+
+Lactobacillus_helveticus_DR = read_DR_fasta_tibble("Lactobacillus_helveticus")
+
+
+Lactobacillus_helveticus_Spacers = read_Spacers_fasta_tibble("Lactobacillus_helveticus")
+
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_helveticus_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_helveticus_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_helveticus_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_helveticus_PerSpacer_CRISPR_v2)
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_helveticus"))
+```
+
+DSM20072-i1-1
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus fermentum (NCBI)
+
+
+
+
+```{r, echo=FALSE}
+# Lactobacillus_fermentum
+
+Lactobacillus_fermentum_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_fermentum", source = "NCBI")
+Lactobacillus_fermentum_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactobacillus_fermentum_PerSpacer_CRISPR_v1)
+
+Lactobacillus_fermentum_CasType_v1 <- read_casType_data("Lactobacillus_fermentum", source = "NCBI")
+
+
+
+Lactobacillus_fermentum_DR = read_DR_fasta_tibble("Lactobacillus_fermentum", source = "NCBI")
+
+
+Lactobacillus_fermentum_Spacers = read_Spacers_fasta_tibble("Lactobacillus_fermentum", source = "NCBI")
+
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_fermentum_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_fermentum_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_fermentum_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_fermentum_PerSpacer_CRISPR_v2)
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_fermentum", source = "NCBI"))
+```
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus casei (NCBI)
+
+
+
+```{r}
+# Lactobacillus_casei
+
+Lactobacillus_casei_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_casei", source = "NCBI")
+Lactobacillus_casei_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_casei_PerSpacer_CRISPR_v1)
+
+
+Lactobacillus_casei_DR = read_DR_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+
+Lactobacillus_casei_Spacers = read_Spacers_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+
+Lactobacillus_casei_CasType_v1 <- read_casType_data("Lactobacillus_casei", source = "NCBI")
+
+Lactobacillus_casei_gene = read_gene_data("Lactobacillus_casei", source = "NCBI")
+
+# COMBINE SPECIES 
+Lactobacillus_casei_PerSpacer_CRISPR_V2$Organism="Lactobacillus_casei"
+Lactobacillus_casei_DR$Organism="Lactobacillus_casei"
+Lactobacillus_casei_Spacers$Organism="Lactobacillus_casei"
+Lactobacillus_casei_CasType_v1$Organism="Lactobacillus_casei"
+Lactobacillus_casei_gene$Organism="Lactobacillus_casei"
+
+
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_casei_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_casei_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_casei_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_casei_PerSpacer_CRISPR_V2)
+
+Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_casei_gene)
+```
+
+## Lactobacillus paracasei (NCBI)
+
+
+
+```{r}
+# Lactobacillus_paracasei
+
+Lactobacillus_paracasei_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_paracasei", source = "NCBI")
+Lactobacillus_paracasei_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_paracasei_PerSpacer_CRISPR_v1)
+
+
+Lactobacillus_paracasei_DR = read_DR_fasta_tibble("Lactobacillus_paracasei", source = "NCBI")
+
+Lactobacillus_paracasei_Spacers = read_Spacers_fasta_tibble("Lactobacillus_paracasei", source = "NCBI")
+
+Lactobacillus_paracasei_CasType_v1 <- read_casType_data("Lactobacillus_paracasei", source = "NCBI")
+
+Lactobacillus_paracasei_gene = read_gene_data("Lactobacillus_paracasei", source = "NCBI")
+
+# COMBINE SPECIES 
+Lactobacillus_paracasei_PerSpacer_CRISPR_V2$Organism="Lactobacillus_casei"
+Lactobacillus_paracasei_DR$Organism="Lactobacillus_casei"
+Lactobacillus_paracasei_Spacers$Organism="Lactobacillus_casei"
+Lactobacillus_paracasei_CasType_v1$Organism="Lactobacillus_casei"
+Lactobacillus_paracasei_gene$Organism="Lactobacillus_casei"
+
+
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_paracasei_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_paracasei_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_paracasei_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_paracasei_PerSpacer_CRISPR_V2)
+
+Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_paracasei_gene)
+```
+
+#---------------------------------------------------------------------------------------------
+## Lactococcus lactis subsp. lactis (DIALACT) 
+
+Dialact taxid: 1360
+
+
+
+
+```{r, echo=FALSE}
+# Lactococcus_lactis_subsp_lactis
+# ONly evidence lvl 1 ¨!!!
+
+Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactococcus_lactis_subsp_lactis")
+Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v1)
+
+Lactococcus_lactis_subsp_lactis_DR = read_DR_fasta_tibble("Lactococcus_lactis_subsp_lactis")
+
+
+Lactococcus_lactis_subsp_lactis_Spacers = read_Spacers_fasta_tibble("Lactococcus_lactis_subsp_lactis")
+
+Lactococcus_lactis_subsp_lactis_CasType_v1 <- read_casType_data("Lactococcus_lactis_subsp_lactis")
+
+Lactococcus_lactis_subsp_lactis_gene = read_gene_data("Lactococcus_lactis_subsp_lactis")
+
+
+#COMBINE SPECIES
+
+Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v2$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_lactis_DR$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_lactis_Spacers$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_lactis_CasType_v1$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_lactis_gene$Organism="Lactococcus_lactis"
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactococcus_lactis_subsp_lactis_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactococcus_lactis_subsp_lactis_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactococcus_lactis_subsp_lactis_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v2)
+
+Dialact_genes = bind_rows(Dialact_genes, Lactococcus_lactis_subsp_lactis_gene)
+```
+
+
+
+## Lactococcus lactis subsp. cremoris (NCBI)
+
+No evidence level 4
+
+```{r}
+
+# Lactococcus_lactis_subsp_cremoris
+
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v1)
+
+Lactococcus_lactis_subsp_cremoris_DR = read_DR_fasta_tibble("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+Lactococcus_lactis_subsp_cremoris_Spacers = read_Spacers_fasta_tibble("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+Lactococcus_lactis_subsp_cremoris_CasType_v1 <- read_casType_data("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+Lactococcus_lactis_subsp_cremoris_gene = read_gene_data("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+
+#COMBINE SPECIES
+
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_cremoris_DR$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_cremoris_Spacers$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_cremoris_CasType_v1$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_cremoris_gene$Organism="Lactococcus_lactis"
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Lactococcus_lactis_subsp_cremoris_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactococcus_lactis_subsp_cremoris_DR)
+Dialact_cas = bind_rows(Dialact_cas, Lactococcus_lactis_subsp_cremoris_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2)
+
+Dialact_genes = bind_rows(Dialact_genes, Lactococcus_lactis_subsp_cremoris_gene)
+
+```
+
+
+
+#---------------------------------------------------------------------------------------------
+## Streptococcus thermophilus (DIALACT)
+
+Dialact taxid: 1308
+
+
+
+```{r}
+# Streptococcus_thermophilus
+
+Streptococcus_thermophilus_PerSpacer_CRISPR_v1 <- read_spacers_data("Streptococcus_thermophilus")
+Streptococcus_thermophilus_PerSpacer_CRISPR_v2 <- add_reldist_leader(Streptococcus_thermophilus_PerSpacer_CRISPR_v1)
+
+
+Streptococcus_thermophilus_DR = read_DR_fasta_tibble("Streptococcus_thermophilus")
+
+Streptococcus_thermophilus_Spacers = read_Spacers_fasta_tibble("Streptococcus_thermophilus")
+
+Streptococcus_thermophilus_CasType_v1 <- read_casType_data("Streptococcus_thermophilus")
+
+
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Streptococcus_thermophilus_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Streptococcus_thermophilus_DR)
+Dialact_cas = bind_rows(Dialact_cas, Streptococcus_thermophilus_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Streptococcus_thermophilus_PerSpacer_CRISPR_v2)
+
+
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Streptococcus_thermophilus"))
+
+```
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Marinilactibacillus psychrotolerans (REMOVED)
+
+Dialact taxid: 191770
+
+
+```{r}
+# # Marinilactibacillus_psychrotolerans
+# 
+# 
+# Marinilactibacillus_psychrotolerans_PerSpacer_CRISPR_v1 <- read_spacers_data("Marinilactibacillus_psychrotolerans")
+# Marinilactibacillus_psychrotolerans_PerSpacer_CRISPR_V2 <- add_reldist_leader(Marinilactibacillus_psychrotolerans_PerSpacer_CRISPR_v1)
+# 
+# Marinilactibacillus_psychrotolerans_DR = read_DR_fasta_tibble("Marinilactibacillus_psychrotolerans")
+# 
+# Marinilactibacillus_psychrotolerans_Spacers = read_Spacers_fasta_tibble("Marinilactibacillus_psychrotolerans")
+# 
+# Marinilactibacillus_psychrotolerans_CasType_v1 <- read_casType_data("Marinilactibacillus_psychrotolerans")
+# 
+# # # Bind
+# # Dialact_CRISPRscope_spacers <- tibble()
+# 
+# # Dialact_spacers <- tibble()
+# # Dialact_repeats <- tibble()
+# # Dialact_cas <- tibble()
+# 
+# 
+# Dialact_spacers = bind_rows(Dialact_spacers, Marinilactibacillus_psychrotolerans_Spacers)
+# Dialact_repeats = bind_rows(Dialact_repeats, Marinilactibacillus_psychrotolerans_DR)
+# Dialact_cas = bind_rows(Dialact_cas, Marinilactibacillus_psychrotolerans_CasType_v1)
+# 
+# Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Marinilactibacillus_psychrotolerans_PerSpacer_CRISPR_V2)
+# 
+# 
+# Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Marinilactibacillus_psychrotolerans"))
+
+```
+
+
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Leuconostoc mesenteroides (DIALACT) 
+
+Dialact taxid: 1245 (species)
+
+No CRISPR with evidence level >1
+
+
+```{r}
+# Leuconostoc_mesenteroides
+
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1 <- read_spacers_data("Leuconostoc_mesenteroides")
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2 <- add_reldist_leader(Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1)
+
+
+Leuconostoc_mesenteroides_DR = read_DR_fasta_tibble("Leuconostoc_mesenteroides")
+
+Leuconostoc_mesenteroides_Spacers = read_Spacers_fasta_tibble("Leuconostoc_mesenteroides")
+
+Leuconostoc_mesenteroides_CasType_v1 <- read_casType_data("Leuconostoc_mesenteroides")
+
+
+
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Leuconostoc_mesenteroides_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Leuconostoc_mesenteroides_DR)
+Dialact_cas = bind_rows(Dialact_cas, Leuconostoc_mesenteroides_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2)
+
+
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Leuconostoc_mesenteroides"))
+```
+
+
+
+#---------------------------------------------------------------------------------------------
+## Propionibacterium_freudenreichii (DIALACT) 
+
+Dialact taxid: 1744 
+
+```{r}
+# Propionibacterium_freudenreichii
+
+Propionibacterium_freudenreichii_PerSpacer_CRISPR_v1 <- read_spacers_data("Propionibacterium_freudenreichii")
+Propionibacterium_freudenreichii_PerSpacer_CRISPR_v2 <- add_reldist_leader(Propionibacterium_freudenreichii_PerSpacer_CRISPR_v1)
+
+
+
+Propionibacterium_freudenreichii_DR = read_DR_fasta_tibble("Propionibacterium_freudenreichii")
+
+Propionibacterium_freudenreichii_Spacers = read_Spacers_fasta_tibble("Propionibacterium_freudenreichii")
+
+Propionibacterium_freudenreichii_CasType_v1 <- read_casType_data("Propionibacterium_freudenreichii")
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Propionibacterium_freudenreichii_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Propionibacterium_freudenreichii_DR)
+Dialact_cas = bind_rows(Dialact_cas, Propionibacterium_freudenreichii_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Propionibacterium_freudenreichii_PerSpacer_CRISPR_v2)
+
+
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Propionibacterium_freudenreichii"))
+
+```
+#---------------------------------------------------------------------------------------------
+
+## Weissella Cibaria
+
+```{r}
+# Weissella_cibaria
+
+Weissella_cibaria_PerSpacer_CRISPR_v1 <- read_spacers_data("Weissella_cibaria", source = "NCBI")
+Weissella_cibaria_PerSpacer_CRISPR_v2 <- add_reldist_leader(Weissella_cibaria_PerSpacer_CRISPR_v1)
+
+
+
+Weissella_cibaria_DR = read_DR_fasta_tibble("Weissella_cibaria", source = "NCBI")
+
+Weissella_cibaria_Spacers = read_Spacers_fasta_tibble("Weissella_cibaria", source = "NCBI")
+
+Weissella_cibaria_CasType_v1 <- read_casType_data("Weissella_cibaria", source = "NCBI")
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+
+Dialact_spacers = bind_rows(Dialact_spacers, Weissella_cibaria_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Weissella_cibaria_DR)
+Dialact_cas = bind_rows(Dialact_cas, Weissella_cibaria_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Weissella_cibaria_PerSpacer_CRISPR_v2)
+
+
+
+Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Weissella_cibaria", source = "NCBI"))
+
+#Dialact_CRISPRscope_spacers %>% filter(Organism == "Weissella_cibaria")
+
+```
+
+#---------------------------------------------------------------------------------------------
+##TODO Lactiplantibacillus_plantarum
+```{r}
+
+```
+
+
+
+
+#---------------------------------------------------------------------------------------------
+Other interesting organisms
+
+Dialact taxid: 1597 - Lactobacillus paracasei
+Dialact taxid: 152331 - Lactobacillus parabuchneri
+Dialact taxid: 1359 - Lactococcus lactis subsp. cremoris (DIALACT)
+
+#----------------------------------------------
+
+
+
+
+# Import CRISPRCasTyper - Repeat results
+
+```{r}
+# Use the exported repeat fasta file and execute CRISPRCasTyper here: https://typer.crispr.dk/#/submit
+
+CRISPRscope_Dialact_cctyper_cas_types <- read_table2("C:/Users/thsch/Desktop/master_thesis/1_scripts/INPUT/CRISPRscope_Dialact_cctyper_cas-types.tsv") %>%
+  mutate(Cas_prediction_probability = Prediction, Cas_subtype = Subtype) %>% 
+  select(-probability, -Prediction, -Subtype)
+#View(CRISPRscope_Dialact_cctyper_cas_types)
+```
+
+
+# Import Cluster 
+
+```{r}
+
+Clusters_CRISPRscope_spacers <- read_csv("C:/Users/thsch/Desktop/master_thesis/1_scripts/INPUT/Clusters_CRISPRscope_spacers_filtered.csv") %>% 
+  distinct(seq, cluster, identity)
+
+Clusters_CRISPRscope_repeats <- read_csv("C:/Users/thsch/Desktop/master_thesis/1_scripts/INPUT/Clusters_CRISPRscope_repeats_filtered.csv") %>% 
+  distinct(seq, cluster, identity)
+
+
+
+```
+
+
+
+
+#----------------------------------------------
+# Join 1 - Direct Repeats
+
+```{r}
+#
+# Join1: join the repeats to the main DF and clean column order
+# Next: join the CRISPRCasTyper cas types
+#
+
+CRISPRscope_tbl <- left_join(Dialact_CRISPRscope_spacers, Dialact_repeats, by = c("Organism", "Strain", "Scaffold", "Array")) %>%
+  mutate(DR_length = length, DR_seq = seq, Spacer_cluster = cluster, Spacer_is_ref = is_ref, Spacer = SpacerNb, ShortSpacerID = ShortID) %>% 
+  select(-length, -seq, -cluster, -is_ref, -SpacerNb, -ShortID,) %>% 
+  relocate(Spacer_cluster, .after = SpacerSeq) %>% 
+  relocate(DR_seq, .before = DR_cluster) %>% 
+  relocate(Spacer_is_ref, .after = Spacer_cluster) %>% 
+  relocate(Spacer, .after = Array) %>% 
+  relocate(Organism, .before = Strain) %>% 
+  relocate(ShortSpacerID, .after = ArrayID) %>% 
+  relocate(ShortArrayID, .after = ArrayID)
+
+
+CRISPRscope_tbl %>% filter(Organism == "Lactobacillus_fermentum")
+Dialact_repeats %>% filter(Organism == "Lactobacillus_casei")
+
+```
+#----------------------------------------------
+
+
+# Join 2 - CAS from CRISPRCasTyper
+
+Joins the predicted cas-type and the prediction probability to the main dataset 
+
+```{r}
+CRISPRscope_tbl <- CRISPRscope_tbl %>% left_join(CRISPRscope_Dialact_cctyper_cas_types, by = c("DR_seq" = "Sequence"))
+
+```
+
+
+#----------------------------------------------
+# Join 3 - Clusters from cd-hit-est
+
+1: remove old cluster related data
+```{r}
+
+CRISPRscope_tbl <- CRISPRscope_tbl %>% select(-Spacer_is_ref, -DR_is_ref, -Spacer_cluster, -DR_cluster)
+
+CRISPRscope_tbl <- CRISPRscope_tbl %>% 
+  left_join(Clusters_CRISPRscope_spacers, by = c("SpacerSeq" = "seq")) %>% 
+  mutate(cluster_spacer = cluster) %>% 
+  mutate(identity_spacer_cluster = identity) %>% 
+  select(-cluster, -identity) %>% 
+  relocate(cluster_spacer, .after = "SpacerSeq") %>% 
+  relocate(identity_spacer_cluster, .after = "cluster_spacer")
+
+
+CRISPRscope_tbl <- CRISPRscope_tbl %>% left_join(Clusters_CRISPRscope_repeats, by = c("DR_seq" = "seq")) %>% 
+  mutate(cluster_repeat = cluster) %>% 
+  mutate(identity_repeat_cluster = identity) %>% 
+  select(-cluster, -identity) %>% 
+  relocate(cluster_repeat, .after = "DR_seq") %>% 
+  relocate(identity_repeat_cluster, .after = "cluster_repeat")
+
+
+
+
+
+```
+
+
+
+#----------------------------------------------
+#----------------------------------------------
+# Quality filtering
+
+```{r}
+CRISPRscope_tbl_raw <- CRISPRscope_tbl
+CRISPRscope_tbl <- CRISPRscope_tbl %>% filter(EvidenceLvl > 3)
+
+
+
+```
+
+
+#----------------------------------------------
+# Available datasets
+
+```{r}
+Dialact_spacers
+Dialact_repeats
+Dialact_cas # Not used, gives more than one cas type per scaffold wheras CCT gives one cas type per Repeat
+
+Dialact_CRISPRscope_spacers
+
+# Cas subtype detected by CRISPRCasTyper (CCT)
+CRISPRscope_Dialact_cctyper_cas_types
+
+# Genes detected by CRISPRCasFinder (CCF)
+Dialact_genes
+
+# With DR merged for each spacer
+CRISPRscope_tbl
+CRISPRscope_tbl %>% summarise(n_dr = n_distinct(SpacerSeq))
+CRISPRscope_tbl %>% summarise(n_dr = n_distinct(DR_seq))
+```
+
+#----------------------------------------------
+# Export Datasets
+
+## Export Main dataset
+```{r}
+# CSV format is heavier but usable everywhere
+write.csv(CRISPRscope_tbl, file = "./OUTPUT/CRISPRscope_Dialact.csv")
+
+# Save an object to a file in RDS format is less space-consuming
+saveRDS(CRISPRscope_tbl, file = "CRISPRscope_tbl.rds")
+```
+
+## Export Repeats (tsv and fasta)
+NOTE: In the first part, all repeats are exported, including the ones with evidence level <4 !
+
+
+```{r}
+
+repeats_unique <- Dialact_repeats %>% select(seq) %>% unique() 
+
+#TSV used by CRISPRCasTyper
+write.table(repeats_unique, "./OUTPUT/CRISPRscope_Dialact_unique_repeats_all.tsv",na = "", quote = FALSE, sep = "\t",row.names = FALSE, col.names = FALSE)
+
+repeats_unique <- repeats_unique %>% rowid_to_column("header")
+
+dfs <- data.frame(repeats_unique$header, repeats_unique$seq)
+dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_repeats_all.fasta")
+
+
+#
+# Export only high quality repeats (used for clustering)
+#
+
+repeats_unique_filtered <- CRISPRscope_tbl %>% select(DR_seq) %>% rowid_to_column("header")
+dfs <- data.frame(repeats_unique_filtered$header, repeats_unique_filtered$DR_seq)
+dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_repeats_filtered.fasta")
+
+```
+
+## Export Spacers Fasta
+For clustering, export all distinct spacers and repeats (only filtered)
+```{r}
+#
+# Dialact_spacers adds all the spacers, whatever the evidence level. Thus it contains spacers that are eliminated after quality filtering.
+#
+spacer_unique <- Dialact_spacers %>% 
+  select(seq) %>% 
+  unique() 
+
+
+dfs <- data.frame(spacer_unique$header, spacer_unique$seq)
+dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_spacers_all.fasta")
+
+
+#
+# Export only high quality spacers (used for clustering)
+#
+
+spacers_unique_filtered <- CRISPRscope_tbl %>% select(SpacerSeq) %>% distinct(SpacerSeq) %>%  
+  rowid_to_column("header") %>% add_column(sufx = "genomic") %>% 
+  unite(header, c(header, sufx))
+
+dfs <- data.frame(spacers_unique_filtered$header, spacers_unique_filtered$SpacerSeq)
+dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_spacers_filtered.fasta")
+```
+
+
+
+
+
+#----------------------------------------------
+# Random exploration
+
+
+```{r}
+CRISPRscope_tbl %>% filter(Strain == "DSM20072-i1-1")
+```
+
+```{r}
+str1 <- Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_v1 %>% distinct(Strain) 
+str2 <- Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_v1 %>% distinct(Strain) 
+str3 <- Lactobacillus_delbrueckii_PerSpacer_CRISPR_v1 %>% distinct(Strain) 
+
+
+intersect(str1$Strain, str2$Strain)
+intersect(str1$Strain, str3$Strain)
+intersect(str3$Strain, str2$Strain)
+
+str4 <- Lactobacillus_helveticus_PerSpacer_CRISPR_v1 %>% distinct(Strain)
+
+intersect(str1$Strain, str4$Strain)
+intersect(str2$Strain, str4$Strain)
+intersect(str3$Strain, str4$Strain)
+
+
+```
+
+
+
+#---------------------------------------------
+
+# Comparison between species
+
+## Number of assemblies (manual)
+```{r}
+Species_assemblies_count <- read_csv("C:/Users/thsch/Desktop/master_thesis/1_scripts/INPUT/Species_assemblies_count.csv")
+
+# manual sum of subspecies 
+
+# Strains with CRISPR, after filtering: 
+
+# Lactobacillus_casei	                27			
+# Lactobacillus_delbrueckii	          152			
+# Lactobacillus_fermentum	            7			
+# Lactobacillus_helveticus	          52			
+# Lactobacillus_rhamnosus	            5			
+# Propionibacterium_freudenreichii	  58			
+# Streptococcus_thermophilus	        83			
+# Weissella_cibaria	                  5
+
+
+
+
+Species_assemblies_count_sum <- Species_assemblies_count %>% 
+  group_by(species) %>% 
+  summarise(assemblies_count = sum(assembly_count)) %>% 
+  filter(species != "Lactococcus_lactis_subsp_cremoris") %>% 
+  filter(species != "Lactococcus_lactis_subsp_lactis") %>% 
+  add_row(species = "Lactococcus_lactis", assemblies_count = 486 ) %>%
+  filter(species != "Lactobacillus_delbrueckii") %>%
+  filter(species != "Lactobacillus_delbrueckii_subsp_lactis") %>% 
+  filter(species != "Lactobacillus_delbrueckii_subsp_bulgaricus") %>% 
+  add_row(species = "Lactobacillus_delbrueckii", assemblies_count = 168 ) %>%
+  filter(species != "Lactobacillus_casei") %>% 
+  filter(species != "Lactobacillus_paracasei") %>% 
+  add_row(species = "Lactobacillus_casei", assemblies_count = 70 )  %>% 
+  filter(species != "Marinilactibacillus_psychrotolerans") %>% 
+  arrange(desc(assemblies_count)) 
+
+
+Species_assemblies_count_sum
+
+Species_assemblies_withCRISPR_count <- CRISPRscope_tbl %>% 
+  group_by(Organism) %>% 
+  summarize(Organism = Organism, yes_crispr = n_distinct(Strain)) %>% 
+  distinct(Organism, yes_crispr) %>% 
+  arrange(desc(yes_crispr))
+
+joined_assemblies_count <- Species_assemblies_withCRISPR_count %>% 
+  left_join(Species_assemblies_count_sum, by = c("Organism" = "species")) %>%
+  mutate(CRISPR_assembly_ratio = round((yes_crispr/assemblies_count), 3)) 
+
+
+
+
+#Manually add leuconostoc and lactococcus (later change..)
+
+joined_assemblies_count <- joined_assemblies_count %>% 
+  ungroup() %>% 
+  add_row(Organism = "Leuconostoc_mesenteroides", yes_crispr = 0, assemblies_count = 102, CRISPR_assembly_ratio = 0) %>% 
+  add_row(Organism = "Lactococcus_lactis", yes_crispr = 0, assemblies_count = 316, CRISPR_assembly_ratio = 0) %>% 
+  arrange(desc(CRISPR_assembly_ratio))
+
+#joined_assemblies_count <- joined_assemblies_count %>% arrange(desc(yes_crispr))
+
+joined_assemblies_count$Organism <- factor(joined_assemblies_count$Organism, levels = joined_assemblies_count$Organism)
+
+# Absolute numbers not ratio (keep order by ratio)
+
+joined_assemblies_count <- joined_assemblies_count %>% mutate(no_crispr =  assemblies_count - yes_crispr)
+joined_assemblies_count
+
+joined_assemblies_count_ratio_plot <- joined_assemblies_count
+
+# Transform for stacked
+joined_assemblies_count_flat <- joined_assemblies_count %>% 
+  select(-assemblies_count, -CRISPR_assembly_ratio) %>% 
+  gather(CRISPR, count, -Organism)
+
+# Modify string for plotting and factor orders
+joined_assemblies_count_flat <- joined_assemblies_count_flat %>% 
+     mutate(Organism = gsub("_", " ", Organism))
+
+lvls <- unique(joined_assemblies_count_flat$Organism)
+
+joined_assemblies_count_flat$Organism <- factor(joined_assemblies_count_flat$Organism, levels = lvls)
+
+
+```
+
+
+#*report*
+```{r fig.height=8, fig.width=9}
+# Plot 
+
+
+
+plt <- joined_assemblies_count_flat %>% 
+  ggplot(aes(x = Organism, y = count, fill = CRISPR))+
+  geom_col(position="stack")+
+  xlab("") +
+  ylab("Assembly count")+
+  #ggtitle("CRISPR containing strains - Ordered by ratio") + 
+  scale_fill_manual(values=c("light blue", "green"), labels = c("No", "Yes")) +
+  #geom_text(aes(label=nb_strain), position=position_dodge(width=0.9), color = "lightblue", vjust=-1) +
+  #geom_text(aes(label=CRISPR_assembly_ratio), position=position_dodge(width=0.9), color = "lightblue", vjust=-1) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 47,
+      hjust = 1,
+      color = "black",
+      size = 12,
+      face = "italic"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "top",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "white",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "grey")
+  ) #+ coord_flip()
+
+ggsave(
+  plot = plt,
+  file = "./IMG/report/Genome_crispr_content_CRISPRstrain.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+
+```
+
+## Number of assemblies CRISPR ratio
+
+```{r}
+
+joined_assemblies_count_plot2 <- joined_assemblies_count_ratio_plot %>% 
+  arrange(desc(CRISPR_assembly_ratio)) %>% 
+  mutate(Organism_txt = paste(gsub("_", " ", Organism), "(",  assemblies_count, ")")) 
+
+joined_assemblies_count_plot2$Organism_txt = factor(joined_assemblies_count_plot2$Organism_txt, 
+                                                    levels = joined_assemblies_count_plot2$Organism_txt)
+
+mean(joined_assemblies_count_plot2$CRISPR_assembly_ratio)
+sd(joined_assemblies_count_plot2$CRISPR_assembly_ratio)
+
+
+pltx <- joined_assemblies_count_plot2 %>% 
+  ggplot(aes(x = Organism_txt, y = CRISPR_assembly_ratio))+
+  geom_col(fill = "lightblue")+
+  xlab("") +
+  ylab("CRISPR ratio")+
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 55,
+      hjust = 1,
+      color = "black",
+      size = 12,
+      face = "italic"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "top",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "white",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "grey")
+  )
+
+
+ggsave(
+  plot = pltx,
+  file = "./IMG/report/Genome_crispr_ratio_CRISPRstrain.pdf",
+  bg = "white",
+  width = 30,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+pltx
+
+```
+
+
+
+
+## Number of strains per species
+
+```{r}
+asdf <- CRISPRscope_tbl %>% group_by(Organism) %>% summarize(Organism = Organism, nb_strain = n_distinct(Strain)) %>% distinct(Organism, nb_strain) %>% arrange(desc(nb_strain)) 
+
+asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+plt <- asdf %>% 
+  ggplot(aes(x = Organism, y = nb_strain, fill = Organism))+
+  geom_col()+
+  xlab("Organism") +
+  ylab("Number of strains available")+
+  ylim(c(0, 200))+
+  #ggtitle("Number of strain available per organism") +
+  geom_text(aes(label=nb_strain), position=position_dodge(width=0.9), color = "lightblue", vjust=-1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "black"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "black"),
+        panel.background = element_rect(fill = "white",colour = "black", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "white",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+ggsave(
+  plot = plt,
+  file = "./IMG/report/Genome_nb_strain_per_organism.png",
+  type = "cairo-png",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+```
+
+
+
+```{r}
+asdf <- CRISPRscope_tbl %>% group_by(Organism) %>% summarize(Organism = Organism, nb_strain = n_distinct(Strain)) %>% distinct(Organism, nb_strain) %>% arrange(desc(nb_strain)) 
+
+asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+plt <- asdf %>% 
+  ggplot(aes(x = Organism, y = nb_strain, fill = Organism))+
+  geom_col()+
+  xlab("Organism") +
+  ylab("# strain available")+
+  ylim(c(0, 200))+
+  ggtitle("Number of strain available per organism") +
+  geom_text(aes(label=nb_strain), position=position_dodge(width=0.9), color = "lightblue", vjust=-1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "grey"),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = "grey", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_nb_strain_per_organism.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+
+```
+
+```{r}
+Species_assemblies_count_sum
+
+asdf <- CRISPRscope_tbl %>% group_by(Organism) %>% summarize(Organism = Organism, nb_strain = n_distinct(Strain)) %>% distinct(Organism, nb_strain) %>% arrange(desc(nb_strain)) 
+asdf
+
+
+
+```
+
+## Total number of arrays
+```{r}
+CRISPRscope_tbl %>% summarise(Total_array = n_distinct(ArrayID))
+CRISPRscope_tbl %>% summarise(Total_array = n_distinct(Strain))
+```
+
+
+## Number of spacers per strain
+# *report*
+Distribution of the number of spacer per strain within organism. Sorted by mean.
+
+```{r fig.height=8, fig.width=12}
+# n_spacer_strain <- CRISPRscope_tbl %>% 
+#   group_by(Strain) %>% 
+#   summarize(Organism = Organism, nspacer_strain = n_distinct(SpacerSeq))  %>% 
+#   ungroup() %>% 
+#   group_by(Organism) %>% 
+#   mutate(avg_nstrain = mean(nspacer_strain)) 
+# 
+# #n_spacer_strain %>% group_by(Organism) %>% summarise(Organism = Organism, avg = avg_nstrain) %>% distinct() %>%  arrange(-avg)
+# 
+# #asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+# 
+# 
+# asdf <- n_spacer_strain %>% 
+#   left_join(CRISPRscope_tbl, by = c("Strain", "Organism")) %>% 
+#   arrange(-avg_nstrain) %>% 
+#   select(Organism, Strain, nspacer_strain) %>% 
+#   distinct()
+# 
+# fctrs <- asdf %>% distinct(Organism)
+# 
+# asdf$Organism <- factor(asdf$Organism, levels = fctrs$Organism)
+# 
+# 
+# plt <- asdf %>% 
+#   mutate(Organism = gsub("_", " ", Organism)) %>% 
+#   ggplot(aes(x=Organism, y = nspacer_strain, fill = Organism)) + 
+#   geom_violin(width=2, alpha=0.4) +
+#   geom_boxplot(width=0.05, color="black", alpha=0.5) +
+#   theme_bw() +
+#   theme(axis.text.x = element_text(angle = 45, hjust=1, color = "black", face = "italic"),
+#         axis.text.y = element_text(color = "black"),
+#         axis.title.x = element_text(color = "black"),
+#         axis.title.y = element_text(color = "black"),
+#         plot.title = element_text(color = "black"),
+#         panel.background = element_rect(fill = "white",colour = NA),
+#         plot.background = element_rect(fill = "white",colour = NA),
+#         plot.margin = unit(c(1,1,1,1), "cm"),
+#         legend.position = "none") +
+#   #ggtitle("Number of distinct spacers per strains")+
+#   ylab("Spacer count per strain")
+# 
+# ggsave(
+#   plot = plt,
+#   file = "./IMG/report/NbSpacerStrain.pdf",
+#   bg = "white",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
+# 
+# plt
+# 
+# asdf %>% filter(Organism == "Weissella_cibaria")
+
+```
+
+Distribution of the number of ARRAYS per strain within organism. Sorted by mean.
+
+```{r fig.height=8, fig.width=12}
+n_spacer_strain <- CRISPRscope_tbl %>% 
+  group_by(Strain) %>% 
+  summarize(Organism = Organism, narray_strain = n_distinct(ArrayID))  %>% 
+  ungroup() %>% 
+  group_by(Organism) %>% 
+  mutate(avg_nstrain = mean(narray_strain)) %>% 
+  distinct()
+
+mean(n_spacer_strain$narray_strain)
+sd(n_spacer_strain$narray_strain)
+
+#n_spacer_strain %>% group_by(Organism) %>% summarise(Organism = Organism, avg = avg_nstrain) %>% distinct() %>%  arrange(-avg)
+
+#asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+
+asdf <- n_spacer_strain %>% 
+  left_join(CRISPRscope_tbl, by = c("Strain", "Organism")) %>% 
+  arrange(-avg_nstrain) %>% 
+  select(Organism, Strain, narray_strain) %>% 
+  distinct()
+
+fctrs <- asdf %>% distinct(Organism)
+
+asdf$Organism <- factor(asdf$Organism, levels = fctrs$Organism)
+
+
+plt <- asdf %>% 
+     mutate(Organism = gsub("_", " ", Organism)) %>% 
+  ggplot(aes(x=Organism, y = narray_strain, fill = Organism)) + 
+  geom_violin(width=1, alpha=0.4) +
+  geom_boxplot(width=0.05, color="black", alpha=0.5) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "black", face = "italic"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        panel.background = element_rect(fill = "white",colour = NA),
+        plot.background = element_rect(fill = "white",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") +
+  #ggtitle("Number of distinct spacers per strains")+
+  ylab("Array count per strain")
+
+ggsave(
+  plot = plt,
+  file = "./IMG/report/NbArrayStrain.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+
+```
+Violin plot not best idea
+
+
+```{r}
+n_spacer_strain <- CRISPRscope_tbl %>% 
+  group_by(Strain) %>% 
+  summarize(Organism = Organism, narray_strain = n_distinct(ArrayID))  %>% 
+  ungroup() %>% 
+  group_by(Organism) %>% 
+  mutate(avg_nstrain = mean(narray_strain)) %>% 
+  distinct()
+
+mean(n_spacer_strain$narray_strain)
+sd(n_spacer_strain$narray_strain)
+
+#n_spacer_strain %>% group_by(Organism) %>% summarise(Organism = Organism, avg = avg_nstrain) %>% distinct() %>%  arrange(-avg)
+
+#asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+
+asdf <- n_spacer_strain %>% 
+  left_join(CRISPRscope_tbl, by = c("Strain", "Organism")) %>% 
+  arrange(-avg_nstrain) %>% 
+  select(Organism, Strain, narray_strain) %>% 
+  distinct()
+
+fctrs <- asdf %>% distinct(Organism)
+
+asdf$Organism <- factor(asdf$Organism, levels = fctrs$Organism)
+
+
+plt <- asdf %>% 
+  ggplot(aes(x=Organism, y = narray_strain, fill = Organism)) + 
+  geom_boxplot(width=0.05, color="black", alpha=0.5) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        panel.background = element_rect(fill = "white",colour = NA),
+        plot.background = element_rect(fill = "white",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") +
+  #ggtitle("Number of distinct spacers per strains")+
+  ylab("Array count per strain")
+
+# ggsave(
+#   plot = plt,
+#   file = "./IMG/report/NbArrayStrainBar.pdf",
+#   bg = "white",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
+
+plt
+
+```
+
+
+
+
+
+
+
+Number of unique spacers per species
+Number of shared spacers -> see heatmap
+```{r}
+asdf <- CRISPRscope_tbl %>% 
+  group_by(Organism) %>% 
+  mutate(nbstrain = n_distinct(Strain)) %>% 
+  summarize(ns = n_distinct(SpacerSeq), ns_norm = round(n_distinct(SpacerSeq)/nbstrain, digits = 3)) %>% 
+  distinct(Organism, ns, ns_norm) %>% 
+  arrange(-ns_norm) %>% 
+  ungroup()
+
+
+asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+plt <- asdf %>%  ggplot(aes(x=Organism, y=ns_norm)) +
+  geom_bar(stat = "identity", fill="orange", color="grey") +
+  geom_text(aes(label=ns_norm), position=position_dodge(width=0.9), vjust=2) +
+  ylim(c(0, 50)) +
+  ylab("# distinct spacers per strain") +
+  ggtitle("Spacer richness by species [normalized by number of strain]") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "grey"),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = "grey", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_spacer_richness_strain.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+pltw <- asdf %>%  ggplot(aes(x=Organism, y=ns_norm)) +
+  geom_bar(stat = "identity", fill="orange", color="grey") +
+  geom_text(aes(label=ns_norm), position=position_dodge(width=0.9), vjust=2) +
+  ylim(c(0, 50)) +
+  ylab("# distinct spacers per strain") +
+  ggtitle("Spacer richness by species [normalized by number of strain]") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        panel.background = element_rect(fill = "white",colour = NA),
+        plot.background = element_rect(fill = "white",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+ggsave(
+  plot = pltw,
+  file = "./IMG/genome/DIALACT_WHITE_spacer_richness_strain.png",
+  type = "cairo-png",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+ggplotly(plt)
+```
+
+
+
+
+
+## Number of repeats
+
+
+```{r}
+asdf <- CRISPRscope_tbl %>% 
+  group_by(Organism) %>% 
+  mutate(nbstrain = n_distinct(Strain)) %>% 
+  summarize(ns = n_distinct(DR_seq), ns_norm = round(n_distinct(DR_seq)/nbstrain, digits = 3)) %>% 
+  distinct(Organism, ns, ns_norm) %>% 
+  arrange(-ns_norm) %>% 
+  ungroup()
+
+
+asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+plt <- asdf %>%  ggplot(aes(x=Organism, y=ns_norm)) +
+  geom_bar(stat = "identity", fill="orange", color="black") +
+  geom_text(aes(label=ns_norm), position=position_dodge(width=0.9), color = "lightblue", vjust=-0.25) +
+  ylim(c(0, 2)) +
+  ylab("# distinct repeats") +
+  ggtitle("Repeats richness by species [normalized by number of strain]") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "grey"),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = "grey", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_repeat_richness_strain.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+pltwhite <- asdf %>%  ggplot(aes(x=Organism, y=ns_norm)) +
+  geom_bar(stat = "identity", fill="orange", color="black") +
+  geom_text(aes(label=ns_norm), position=position_dodge(width=0.9), vjust=-0.25) +
+  ylim(c(0, 2)) +
+  ylab("# distinct repeats") +
+  ggtitle("Repeats richness by species [normalized by number of strain]") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+
+ggsave(
+  plot = pltwhite,
+  file = "./IMG/genome/DIALACT_WHITE_repeat_richness_strain.png",
+  type = "cairo-png",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+
+```
+## Number of repeat_cluster per Organism
+
+```{r}
+asdf <- CRISPRscope_tbl %>% 
+  group_by(Organism) %>% 
+  mutate(nbstrain = n_distinct(Strain)) %>% 
+  summarize(nr = n_distinct(cluster_repeat)) %>% 
+  distinct(Organism, nr) %>% 
+  arrange(-nr) %>% 
+  ungroup()
+
+
+asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+plt <- asdf %>%  ggplot(aes(x=Organism, y=nr)) +
+  geom_bar(stat = "identity", fill="orange", color="black") +
+  geom_text(aes(label=nr), position=position_dodge(width=0.9), color = "lightblue", vjust=-0.25) +
+  ylim(c(0, 8)) +
+  ylab("# direct repeats cluster") +
+  ggtitle("Number of direct repeat clusters per species") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "grey"),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = "grey", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_repeat_cluster_species.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+```
+
+## Number of spacers per array
+
+```{r}
+maxx <- max(CRISPRscope_tbl$NbSpacerInArray)
+minn <- min(CRISPRscope_tbl$NbSpacerInArray)
+
+asdf <- CRISPRscope_tbl %>% 
+  count(ArrayID) %>% 
+  count(n) %>% 
+  complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  replace_na(list(nn = 0))
+
+maxy <- max(asdf$nn)
+miny <- min(asdf$nn)
+
+
+plt <- asdf %>% ggplot(aes(x=n, y=nn)) +
+  geom_bar(stat='identity', fill="orange") +
+  ggtitle("Array sizes") +
+  xlab("Number of spacers in an array") +
+  ylab("Number of arrays with n spacers") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "grey"),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = "grey", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_nb_spacer_per_array.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+# # A bit ugly boxplot
+# plt2 <- CRISPRscope_tbl %>% 
+#   count(ArrayID) %>% 
+#   select(n) %>% ggplot(aes(x=n)) + geom_boxplot(fill="orange")
+# plt2
+
+```
+
+## Number of spacers per arrays per species
+
+```{r}
+
+asdf <- CRISPRscope_tbl %>% 
+  count(ArrayID, Organism) %>% 
+  count(n, Organism) 
+
+
+
+plt <- asdf %>% ggplot(aes(x=n, y=nn)) +
+  geom_bar(stat='identity', fill="orange") +
+  ggtitle("Array sizes") +
+  xlab("Number of spacers in an array") +
+  ylab("Number of arrays with n spacers") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "grey"),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = "grey", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") +
+  facet_wrap(vars(Organism), scales = "fixed")
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_nb_spacer_per_array_per_species.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+```
+
+
+
+## Number of spacers per species
+
+```{r}
+asdf <- CRISPRscope_tbl %>% 
+  group_by(Organism) %>% 
+  summarize(nr = n_distinct(SpacerSeq)) %>% 
+  distinct(Organism, nr) %>% 
+  arrange(-nr) %>% 
+  ungroup()
+
+
+asdf$Organism <- factor(asdf$Organism, levels = asdf$Organism)
+
+plt <- asdf %>%  ggplot(aes(x=Organism, y=nr)) +
+  geom_bar(stat = "identity", fill="orange", color="black") +
+  geom_text(aes(label=nr), position=position_dodge(width=0.9), color = "lightblue", vjust=-0.25) +
+  ylab("# distinct spacers") +
+  ggtitle("Number of distinct spacers per species") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "grey"),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = "grey", linetype = 'solid', size = 0.5),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none") 
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_distinct_spacer_per_species.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+```
+
+
+## Array size per subtype
+# *report*
+```{r fig.height=8, fig.width=15}
+asdf <- CRISPRscope_tbl %>% 
+  select(Organism, NbSpacerInArray, Cas_subtype, ArrayID) %>% 
+  distinct(Organism, NbSpacerInArray, Cas_subtype, ArrayID) %>% 
+  group_by(Cas_subtype, ArrayID)
+
+
+
+pltwhite <- asdf %>% 
+  ggplot(aes(x=NbSpacerInArray, fill=Cas_subtype)) +
+  #geom_density(adjust=1.5, alpha=.4) +
+  geom_histogram(adjust=1.5, alpha=.8) +
+  facet_wrap(~Cas_subtype, scales = "free_y") +
+  #ggtitle("Array sizes per cas type") +
+  xlab("Array size") +
+  ylab("Array count") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, color = "black"),
+        # axis.text.y = element_text(color = "grey"),
+        # axis.title.x = element_text(color = "grey"),
+        # axis.title.y = element_text(color = "grey"),
+        # axis.line.y.left = element_line(color = "grey"),
+        # axis.line.y.right = element_line(color = "grey"),
+        # axis.line.x = element_line(color = "grey"),
+        # axis.ticks = element_line(color = "grey"),
+        # plot.title = element_text(color = "grey"),
+        # panel.background = element_rect(fill = "transparent",colour = NA),
+        # plot.background = element_rect(fill = "transparent",colour = NA),
+        # plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "none"
+        # panel.grid.major = element_line(color = "grey", size = 0.1),
+        # panel.grid.minor = element_line(color = "grey", size = 0.1),
+        # strip.background = element_rect(color="grey", fill="transparent", size=0.5, linetype="solid"),
+        # strip.text = element_text(color = "grey")
+        )
+
+ggsave(
+  plot = pltwhite,
+  file = "./IMG/report/ArraySizeCasType.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+pltwhite
+
+
+```
+
+## Number of spacers per subtypes / species
+## Stacked number of spacer per subtypes
+```{r fig.height=8, fig.width=15}
+asdf <-
+  CRISPRscope_tbl %>% filter(Cas_subtype == "I-E") %>%  select(Organism, NbSpacerInArray) %>% distinct(Organism, NbSpacerInArray)
+
+plt <- asdf %>%
+  ggplot(aes(x = NbSpacerInArray, fill = Organism)) +
+  #geom_density(adjust=1.5, alpha=.4) +
+  geom_histogram(
+    adjust = 1.5,
+    alpha = .9,
+    position = "stack",
+    show.legend = TRUE
+  ) +
+  ggtitle("Array sizes for cas type I-E") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "grey"
+    ),
+    axis.text.y = element_text(color = "grey"),
+    axis.title.x = element_text(color = "grey"),
+    axis.title.y = element_text(color = "grey"),
+    axis.line.y.left = element_line(color = "grey"),
+    axis.line.y.right = element_line(color = "grey"),
+    axis.line.x = element_line(color = "grey"),
+    axis.ticks = element_line(color = "grey"),
+    plot.title = element_text(color = "grey"),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.position = "right",
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.box.background = element_rect(fill = "transparent", colour = NA),
+    legend.text = element_text(color = "grey"),
+    legend.title = element_text(color = "grey"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "grey", size = 0.1),
+    panel.grid.minor = element_line(color = "grey", size = 0.1),
+    strip.background = element_rect(
+      color = "grey",
+      fill = "transparent",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "grey")
+  )
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_I-E_cas_type_array_size.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+
+plt
+
+
+```
+
+
+## FCT heatmap
+
+Keep it manual for now -> complex to facet. All data are available separately for each organism. 
+
+```{r}
+
+
+
+#-------------------------------------------------------
+# Plot for a group of species the proportion of sequences
+# in common.
+#
+# Input: list of sequences - species
+#
+#
+#
+#-------------------------------------------------------
+
+custom_overlap_heatmap <-
+  function(Sequence_compare, input_title, big = FALSE) {
+    # Format for Sequence_compare:
+    
+    # seq                                      species
+    # <fctr>                                   <chr>
+    #
+    #
+    # TTGTTGTAACTCTGTTACTTTTGTACCAGCAAAT	     Lactobacillus_delbrueckii
+    # GCTTCTTCTTTCTGCTGCTACTTTCCCTTCAGC	       Lactobacillus_delbrueckii
+    # TCACCCATGGTCTTGAACTGCGTAGCCATGCCTGT	     Lactobacillus_delbrueckii
+    # AGTTGCCGACCATAGCTCCGCCAGCAATGGAGTT	     Lactobacillus_delbrueckii
+    # AAAGGATACGGATACGTCGCCTTCAGTGATCGACT	     Lactobacillus_delbrueckii
+    # ...                                      ...
+    
+    # count the number of different species
+    tttt <- as_tibble(Sequence_compare)
+    tttt <- tttt %>% summarise(nspec = n_distinct(species))
+    NB_SPECIES = tttt$`nspec`
+    
+    # type of tbl: matrix nxn -> access names with dimnames (or col/rownames)
+    # From this, we will have the number of shared spacers between each pair of species
+    
+    tbl <-
+      table(Sequence_compare[2:1]) %*% t(table(Sequence_compare[2:1]))
+    dimtbl <- dim(tbl)
+    
+    # Matrix for the total sequences per pair of species
+    new_matrix <-
+      matrix(nrow = NB_SPECIES,
+             ncol = NB_SPECIES,
+             dimnames = dimnames(tbl))
+    
+    # Result matrix with the percentages of shared sequences -> (shared / total) * 100
+    result <-
+      matrix(nrow = NB_SPECIES,
+             ncol = NB_SPECIES,
+             dimnames = dimnames(tbl))
+    
+    for (col in 1:ncol(tbl)) {
+      for (row in 1:nrow(tbl)) {
+        # Row
+        rowname <- rownames(tbl)[row]
+        
+        # Total
+        total_sp_1 <-
+          Sequence_compare %>% count(species) %>%  filter(species == rowname)
+        total_sp_1 <- total_sp_1$n
+        
+        # Col
+        colname <- colnames(tbl)[col]
+        
+        # Total
+        total_sp_2 <-
+          Sequence_compare %>% count(species) %>% filter(species == colname)
+        total_sp_2 <- total_sp_2$n
+        
+        # Compute sum and percentage
+        if (colname != rowname) {
+          new_matrix[row, col] = total_sp_1 + total_sp_2
+        }
+        else{
+          new_matrix[row, col] = total_sp_1
+        }
+        
+        # Fill the result matrix
+        result[row, col] <-
+          (tbl[row, col] / new_matrix[row, col]) * 100
+        
+      }
+      
+    }
+    
+    # convert matrix to df and to tibble
+    
+    df1 <- melt(result, c("Spec1", "Spec2"))
+    shared_seq_proportion <- as_tibble(df1)
+    
+    df2 <- melt(tbl, c("Spec1", "Spec2"))
+    common_seq <- as_tibble(df2)
+    
+    # Double plot
+    plots <- NULL
+    
+    
+    
+    # Remove text if heatmap is big
+    
+    
+    if (big == TRUE) {
+      plot1 <-
+      shared_seq_proportion %>% ggplot(aes(x = Spec1, y = Spec2, fill = value)) +
+      geom_tile(aes(fill = value, alpha = value)) +
+      scale_fill_gradient(low = "white", high = "orange") +
+      labs(y = "", x = "", fill = "Percent") +
+      theme(
+        axis.text.x = element_text(
+          angle = 45,
+          hjust = 1,
+          color = "grey"
+        ),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        axis.line.y.left = element_line(color = "grey"),
+        axis.line.y.right = element_line(color = "grey"),
+        axis.line.x = element_line(color = "grey"),
+        axis.ticks = element_line(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        plot.margin = unit(c(1, 1, 1, 1), "cm"),
+        legend.position = "none",
+        panel.grid.major = element_line(color = "grey", size = 0.1),
+        panel.grid.minor = element_line(color = "grey", size = 0.1),
+        strip.background = element_rect(
+          color = "grey",
+          fill = "transparent",
+          size = 0.5,
+          linetype = "solid"
+        ),
+        strip.text = element_text(color = "grey")
+      ) +
+      ggtitle(paste("Proportion", input_title, sep = ""))
+      
+      ggsave(
+        plot = plot1,
+        file = "./IMG/genome/DIALACT_TRANS_shared_proportion.png",
+        type = "cairo-png",
+        bg = "transparent",
+        width = 95,
+        height = 85,
+        units = "cm",
+        dpi = 800
+      )
+    } else{
+      
+      plot1 <-
+      shared_seq_proportion %>% ggplot(aes(x = Spec1, y = Spec2, fill = value)) +
+      geom_tile(aes(fill = value, alpha = value)) +
+      geom_text(aes(label = round(value, 1)), color = "white") +
+      scale_fill_gradient(low = "blue", high = "orange") +
+      labs(y = "", x = "", fill = "Percent") +
+      theme(
+        axis.text.x = element_text(
+          angle = 45,
+          hjust = 1,
+          color = "grey"
+        ),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        axis.line.y.left = element_line(color = "grey"),
+        axis.line.y.right = element_line(color = "grey"),
+        axis.line.x = element_line(color = "grey"),
+        axis.ticks = element_line(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        plot.margin = unit(c(1, 1, 1, 1), "cm"),
+        legend.position = "none",
+        panel.grid.major = element_line(color = "grey", size = 0.1),
+        panel.grid.minor = element_line(color = "grey", size = 0.1),
+        strip.background = element_rect(
+          color = "grey",
+          fill = "transparent",
+          size = 0.5,
+          linetype = "solid"
+        ),
+        strip.text = element_text(color = "grey")
+      ) +
+      ggtitle(paste("Proportion", input_title, sep = ""))
+      
+      ggsave(
+        plot = plot1,
+        file = "./IMG/genome/DIALACT_TRANS_shared_proportion.png",
+        type = "cairo-png",
+        bg = "transparent",
+        width = 25,
+        height = 15,
+        units = "cm",
+        dpi = 800
+      )
+    }
+    
+  # Number of shared spacers
+    
+    
+    if (big == TRUE) {
+
+      # DO NOT PLOT
+      print("Not number plots for too big data")
+      return(plot1)
+      
+    } else{
+      plot2 <- common_seq %>% ggplot(aes(x = Spec1, y = Spec2, fill = value)) +
+      geom_tile(aes(fill = value, alpha = value)) +
+      geom_text(aes(label = round(value, 1)), color = "white") +
+      scale_fill_gradient(low = "white", high = "orange") +
+      labs(y = "", x = "", fill = "Percent") +
+      theme(
+        axis.text.x = element_text(
+          angle = 45,
+          hjust = 1,
+          color = "grey"
+        ),
+        axis.text.y = element_text(color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        axis.line.y.left = element_line(color = "grey"),
+        axis.line.y.right = element_line(color = "grey"),
+        axis.line.x = element_line(color = "grey"),
+        axis.ticks = element_line(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        plot.margin = unit(c(1, 1, 1, 1), "cm"),
+        legend.position = "none",
+        panel.grid.major = element_line(color = "grey", size = 0.1),
+        panel.grid.minor = element_line(color = "grey", size = 0.1),
+        strip.background = element_rect(
+          color = "grey",
+          fill = "transparent",
+          size = 0.5,
+          linetype = "solid"
+        ),
+        strip.text = element_text(color = "grey")
+      ) +
+      ggtitle(paste("Number", input_title, sep = ""))
+      
+      ggsave(
+        plot = plot2,
+        file = "./IMG/genome/DIALACT_TRANS_shared_number.png",
+        type = "cairo-png",
+        bg = "transparent",
+        width = 25,
+        height = 15,
+        units = "cm",
+        dpi = 800
+      )
+      
+      plots <- subplot(plot1, plot2, nrows = 2) %>%
+      layout(plot_bgcolor  = "rgba(0, 0, 0, 0)",
+             paper_bgcolor = "rgba(0, 0, 0, 0)")
+    }
+    
+    
+    
+    # plots %>%
+    #   layout(plot_bgcolor  = "rgba(0, 0, 0, 0)",
+    #          paper_bgcolor = "rgba(0, 0, 0, 0)",
+    #          fig_bgcolor   = "rgba(0, 0, 0, 0)") %>% orca(paste(input_title, ".png", sep = ""))
+    
+    
+    
+    # RETURN instead of saving
+    #saveWidget(plots, "shared_sequences.html", selfcontained = TRUE)
+    #ggplotly(plots)
+    
+    return(plots)
+    
+  }
+
+```
+
+
+
+Compare the organisms to others. 
+
+## Direct repeats overlap 
+
+
+```{r}
+
+# Good source. https://stackoverflow.com/questions/41270941/r-make-all-pairwise-comparisons-between-different-objects 
+
+
+dr1 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_delbrueckii") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+drh <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_helveticus") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+dr2 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_rhamnosus") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+dr3 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Streptococcus_thermophilus") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+
+dr5 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Propionibacterium_freudenreichii") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+  
+  
+dr6 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactococcus_lactis") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+dr7 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_casei") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+dr8 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Weissella_cibaria") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+dr9 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_fermentum") %>% 
+  mutate(species = Organism, seq = as.factor(DR_seq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+DR_compare <- bind_rows(dr1, drh, dr2, dr3, dr5, dr6, dr7, dr8, dr9)
+
+
+plots <- custom_overlap_heatmap(DR_compare, " of shared Direct Repeats")
+
+#saveWidget(plots, "./IMG/genome/shared_repeats.html", selfcontained = TRUE)
+
+# 
+# ggsave(
+#   plot = plots,
+#   file = "./IMG/genome/DIALACT_spacer_overlap.png",
+#   type = "cairo-png",
+#   bg = "transparent",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
+
+plots
+
+```
+
+
+
+## Spacers overlap
+
+Compares the different species and show how many (percentage) of their spacers they share. 
+
+Manually add the spacers to the code. 
+```{r}
+
+
+sp1 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_delbrueckii") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+sph <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_helveticus") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+sp2 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_rhamnosus") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+
+sp3 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Streptococcus_thermophilus") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+sp5 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Propionibacterium_freudenreichii") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+
+sp6 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactococcus_lactis_subsp_lactis") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+sp7 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_casei") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+sp8 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Weissella_cibaria") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+sp9 <- CRISPRscope_tbl %>% 
+  filter(Organism == "Lactobacillus_fermentum") %>% 
+  mutate(species = Organism, seq = as.factor(SpacerSeq)) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+
+Spacers_compare <- bind_rows(sp1, sph, sp2, sp3, sp5, sp6, sp7, sp8, sp9)
+
+
+
+plots <- custom_overlap_heatmap(Spacers_compare, " of shared spacers")
+
+# ggsave(
+#   plot = plots,
+#   file = "./IMG/genome/DIALACT_repeats_overlap.png",
+#   type = "cairo-png",
+#   bg = "transparent",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
+
+plots
+
+```
+
+
+# Comparison within species
+
+## Strain comparison overlap
+Plot the same heatmap as between species but compare within each species, how the strains share spacers
+
+
+```{r fig.height=12, fig.width=21}
+# Must be named "seq" and "species"
+seq_strain_spacers <- CRISPRscope_tbl %>% filter(Organism == "Weissella_cibaria") %>% 
+  mutate(seq = as.factor(SpacerSeq), species = Strain) %>% 
+  select(seq, species) %>% 
+  distinct(.keep_all = F)
+
+plots <- custom_overlap_heatmap(seq_strain_spacers, " of shared spacers", big=FALSE)
+plots
+
+# tbl <- table(seq_strain_spacers[2:1]) %*% t(table(seq_strain_spacers[2:1]))
+# dimtbl <- dim(tbl)
+
+```
+
+
+
+
+# Cluster
+## Cluster distance variance
+
+```{r}
+
+
+input_tibblev2 <- CRISPRscope_tbl
+
+sd_rel_dist_leader <- input_tibblev2 %>%
+  filter(!is.na(rel_dist_leader)) %>%
+  group_by(cluster_spacer) %>%
+  mutate(DistVariance = sd(rel_dist_leader))
+
+plt <- sd_rel_dist_leader %>%
+  group_by(cluster_spacer) %>%
+  ggplot(aes(x = DistVariance, fill = ..x..)) +
+  geom_histogram(binwidth = 0.01) +
+  ggtitle("Standard deviation of the relative distance from the leader within \nsimilar spacers cluster") +
+  xlab("Standard Deviation") +
+  xlim(c(0,0.5)) +
+  ylim(c(0, 3000)) +
+  ylab("Clusters") +
+  scale_fill_gradient2(
+    low = 'orange',
+    high = 'red',
+    midpoint = 0.25,
+    name = 'SD',
+    trans = "log2") + 
+  scale_colour_calc() +
+  theme(
+    axis.title.x = element_text(colour = "grey"),
+    axis.title.y = element_text(colour = "grey"),
+    axis.text = element_text(colour = "grey"),
+    plot.title = element_text(colour = "grey"),
+    panel.grid.major = element_line(
+      size = 0.5,
+      linetype = 'solid',
+      colour = "grey"
+    ),
+    panel.grid.minor = element_line(
+      size = 0.25,
+      linetype = 'solid',
+      colour = "grey"
+    ),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+        legend.position = "right",
+        legend.background = element_rect(fill = "transparent", colour = NA),
+        legend.box.background = element_rect(fill = "transparent", colour = NA),
+        legend.text = element_text(color = "grey"),
+        legend.title = element_text(color = "grey")
+  )
+
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_variance_position_per_cluster.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+#NA's are removed for arrays with out relative distances but remains later if the array has only 1 element (SD formula gives a 0/0 if only one element)
+# For Lb_delbruekii we can see that the variance is rarely over 0.2
+
+plt
+
+```
+
+
+
+The same for each organisms: 
+
+Standard deviation expresses by how much the members of a group differ from the mean value for the group. It id dependent on the unit, here, as the distance is between 0 and 1, the maximum would be around 0.5. Let's say we have only spacers at pos. 1 and 0, the mean would be 0.5.  
+
+```{r fig.height=8, fig.width=12}
+
+input_tibblev2 <- CRISPRscope_tbl
+
+sd_rel_dist_leader <- input_tibblev2 %>%
+  filter(!is.na(rel_dist_leader)) %>%
+  group_by(cluster_spacer) %>%
+  mutate(DistVariance = sd(rel_dist_leader))
+
+plt <- sd_rel_dist_leader %>%
+  group_by(cluster_spacer) %>%
+  ggplot(aes(x = DistVariance, fill = ..x..)) +
+  geom_histogram(binwidth = 0.01) +
+  ggtitle("Standard deviation of the relative distance from the leader within similar spacers cluster") +
+  xlab("Standard Deviation") +
+  xlim(c(0,1)) +
+  ylab("Clusters") +
+  scale_fill_gradient2(
+    low = 'orange',
+    mid = 'red',
+    high = 'white',
+    midpoint = 0.5,
+    name = 'SD',
+    trans = "log2"
+  ) + scale_colour_calc() +
+  theme(
+    axis.title.x = element_text(colour = "grey"),
+    axis.title.y = element_text(colour = "grey"),
+    axis.text = element_text(colour = "grey"),
+    plot.title = element_text(colour = "grey"),
+    panel.grid.major = element_line(
+      size = 0.5,
+      linetype = 'solid',
+      colour = "grey"
+    ),
+    panel.grid.minor = element_line(
+      size = 0.25,
+      linetype = 'solid',
+      colour = "grey"
+    ),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA)
+  ) + facet_wrap(~Organism, scales = "free_y")
+
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_CRISPRscope_Dialact_variance_cluster_organism.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+#NA's are removed for arrays with out relative distances but remains later if the array has only 1 element (SD formula gives a 0/0 if only one element)
+# For Lb_delbruekii we can see that the variance is rarely over 0.2
+
+plt
+```
+<!-- Per species -->
+<!-- ```{r fig.height=8, fig.width=12} -->
+
+
+<!-- mad_rel_dist_leader <- CRISPRscope_tbl %>% -->
+<!--   filter(!is.na(rel_dist_leader)) %>% -->
+<!--   group_by(spacer_cluster_organism) %>% -->
+<!--   mutate(DistMad = mad(rel_dist_leader, center = median(rel_dist_leader))) -->
+
+<!-- plt <- mad_rel_dist_leader %>% -->
+<!--   group_by(spacer_cluster_organism) %>% -->
+<!--   ggplot(aes(x = DistMad, fill = ..x..)) + -->
+<!--   geom_histogram(binwidth = 50) + -->
+<!--   ggtitle("Median Absolute Deviation of the relative distance from the leader \nwithin similar spacers cluster") + -->
+<!--   xlab("MAD") + -->
+<!--   ylab("Clusters") + -->
+<!--   scale_fill_gradient2( -->
+<!--     low = 'yellow', -->
+<!--     mid = 'orange', -->
+<!--     high = 'red', -->
+<!--     midpoint = 1000, -->
+<!--     name = 'Median \nAbsolute \nDeviation' -->
+<!--   ) + scale_colour_calc() + -->
+<!--   theme( -->
+<!--     axis.title.x = element_text(colour = "grey"), -->
+<!--     axis.title.y = element_text(colour = "grey"), -->
+<!--     axis.text = element_text(colour = "grey"), -->
+<!--     plot.title = element_text(colour = "grey"), -->
+<!--     panel.grid.major = element_line( -->
+<!--       size = 0.5, -->
+<!--       linetype = 'solid', -->
+<!--       colour = "grey" -->
+<!--     ), -->
+<!--     panel.grid.minor = element_line( -->
+<!--       size = 0.25, -->
+<!--       linetype = 'solid', -->
+<!--       colour = "grey" -->
+<!--     ), -->
+<!--     panel.background = element_rect(fill = "transparent", colour = NA), -->
+<!--     plot.background = element_rect(fill = "transparent", colour = NA) -->
+<!--   ) + facet_wrap(~Organism, scales="free_y") -->
+
+
+<!-- ggsave( -->
+<!--   plot = plt, -->
+<!--   file = "CRISPRscope_Dialact_Median_Absolute_Deviation_cluster_organism.png", -->
+<!--   type = "cairo-png", -->
+<!--   bg = "transparent", -->
+<!--   width = 25, -->
+<!--   height = 15, -->
+<!--   units = "cm", -->
+<!--   dpi = 800 -->
+<!-- ) -->
+<!-- #NA's are removed for arrays with out relative distances but remains later if the array has only 1 element (SD formula gives a 0/0 if only one element) -->
+<!-- # For Lb_delbruekii we can see that the variance is rarely over 0.2 -->
+
+<!-- plt -->
+<!-- ``` -->
+
+
+<!-- ```{r fig.height=8, fig.width=12} -->
+
+
+<!-- mad_rel_dist_leader <- CRISPRscope_tbl %>% -->
+<!--   filter(!is.na(rel_dist_leader)) %>% -->
+<!--   group_by(spacer_cluster_organism) %>% -->
+<!--   mutate(DistMad = mad(rel_dist_leader, center = median(rel_dist_leader))) -->
+
+<!-- plt <- mad_rel_dist_leader %>% -->
+<!--   group_by(spacer_cluster_organism) %>% -->
+<!--   ggplot(aes(x = DistMad, fill = ..x..)) + -->
+<!--   geom_histogram(binwidth = 50) + -->
+<!--   ggtitle("Median Absolute Deviation of the relative distance from the leader \nwithin similar spacers cluster") + -->
+<!--   xlab("MAD") + -->
+<!--   ylab("Clusters") + -->
+<!--   scale_fill_gradient2( -->
+<!--     low = 'yellow', -->
+<!--     mid = 'orange', -->
+<!--     high = 'red', -->
+<!--     midpoint = 1000, -->
+<!--     name = 'Median \nAbsolute \nDeviation' -->
+<!--   ) + scale_colour_calc() + -->
+<!--   theme( -->
+<!--     axis.title.x = element_text(colour = "grey"), -->
+<!--     axis.title.y = element_text(colour = "grey"), -->
+<!--     axis.text = element_text(colour = "grey"), -->
+<!--     plot.title = element_text(colour = "grey"), -->
+<!--     panel.grid.major = element_line( -->
+<!--       size = 0.5, -->
+<!--       linetype = 'solid', -->
+<!--       colour = "grey" -->
+<!--     ), -->
+<!--     panel.grid.minor = element_line( -->
+<!--       size = 0.25, -->
+<!--       linetype = 'solid', -->
+<!--       colour = "grey" -->
+<!--     ), -->
+<!--     panel.background = element_rect(fill = "transparent", colour = NA), -->
+<!--     plot.background = element_rect(fill = "transparent", colour = NA) -->
+<!--   ) + facet_wrap(~Cas_subtype, scales="free_y") -->
+
+
+<!-- ggsave( -->
+<!--   plot = plt, -->
+<!--   file = "CRISPRscope_Dialact_Median_Absolute_Deviation_cluster_organism.png", -->
+<!--   type = "cairo-png", -->
+<!--   bg = "transparent", -->
+<!--   width = 25, -->
+<!--   height = 15, -->
+<!--   units = "cm", -->
+<!--   dpi = 800 -->
+<!-- ) -->
+<!-- #NA's are removed for arrays with out relative distances but remains later if the array has only 1 element (SD formula gives a 0/0 if only one element) -->
+<!-- # For Lb_delbruekii we can see that the variance is rarely over 0.2 -->
+
+<!-- plt -->
+<!-- ``` -->
+
+
+
+## repeat cluster species comparison
+#*report*
+Show that repeats are strain specific with the clustering
+
+```{r}
+# Stats about how clusters are shared. 
+DR_clst_stats <- CRISPRscope_tbl %>% select(Organism, Strain, cluster_repeat) %>% 
+  distinct() %>% 
+  group_by(Organism) %>% 
+  summarise(Organism, cluster_repeat) %>% 
+  arrange(cluster_repeat) %>% 
+  distinct() %>% 
+  ungroup() %>% 
+  select(-Organism) %>% 
+  count(cluster_repeat) 
+
+mean(DR_clst_stats$n)
+sd(DR_clst_stats$n)
+
+# Repeat clusters are present in average in 1.52 Organisms with a SD of 0.94
+
+spacer_clst <- CRISPRscope_tbl %>% select(Organism, Strain, cluster_spacer) %>% 
+  distinct() %>% 
+  group_by(Organism) %>% 
+  summarise(Organism, cluster_spacer) %>% 
+  arrange(cluster_spacer) %>% 
+  distinct() %>% 
+  ungroup() %>% 
+  select(-Organism) %>% 
+  count(cluster_spacer)
+
+mean(spacer_clst$n)
+sd(spacer_clst$n)
+# Repeat clusters are present in average in 1.52 Organisms with a SD of 0.94
+# Spacers are present in average in 1.05 organisms with a SD of 0.22
+
+```
+
+
+```{r}
+plot_dr_cluster <- CRISPRscope_tbl %>% select(Organism, Strain, cluster_repeat) %>% 
+  distinct() %>% 
+  group_by(Organism) %>% 
+  summarise(Organism, cluster_repeat) %>% 
+  arrange(cluster_repeat) %>% 
+  distinct() %>% 
+  mutate(cluster_repeat = as_factor(cluster_repeat), Organism = as_factor(Organism)) %>% 
+  ggplot(aes(x=cluster_repeat, y=Organism)) +
+  geom_tile( fill = "light blue", color = "gray")+
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, color = "black"),
+        axis.text.y = element_text(hjust = 0, color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        axis.line.y.left = element_line(color = "black"),
+        axis.line.y.right = element_line(color = "black"),
+        axis.line.x.top = element_line(color = "black"),
+        axis.line.x.bottom = element_line(color = "black"),
+        axis.ticks = element_line(color = "black"),
+        panel.background = element_rect(fill = "white",colour = NA),
+        panel.grid.major = element_line(size = 0, linetype = 'solid',colour = "white"),
+        panel.grid.minor = element_line(size = 0, linetype = 'solid',colour = "white"),
+        plot.background = element_rect(fill = "white",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "right",
+        legend.background = element_rect(fill = "white", colour = NA),
+        legend.box.background = element_rect(fill = "white", colour = NA),
+        legend.text = element_text(color = "black"),
+        legend.title = element_text(color = "black")) +
+  xlab("80% similarity repeats clusters") +
+  ylab("Organism") 
+
+
+ggsave(
+  plot = plot_dr_cluster,
+  file = "./IMG/report/RepeatsGenome80percent.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plot_dr_cluster
+```
+## same for spacers
+
+```{r fig.height=8, fig.width=12}
+# how many spacer clusters are present more than once ?
+
+tmp_clst <- CRISPRscope_tbl
+tmp_clst$cluster_spacer <- as.factor(tmp_clst$cluster_spacer)
+
+tmp_clst %>% select(Organism, cluster_spacer) %>% 
+  distinct() %>%  
+  count(cluster_spacer) %>% 
+  filter(n > 1)
+
+# => 290 clusters are present in more than 1 species
+
+tmp_clst %>% select(cluster_spacer) %>% distinct(cluster_spacer)
+# => 5800 Total 
+
+# Comparison between delbrueckii and helveticus
+
+tmp_clst %>% filter(Organism == "Lactobacillus_helveticus" | Organism == "Lactobacillus_delbrueckii") %>% 
+  select(Organism, cluster_spacer) %>% 
+  distinct() %>%  
+  count(cluster_spacer) %>% 
+  filter(n > 1)
+# => they share 275 spacers (290 in total for the species of interest)
+
+
+```
+
+
+```{r fig.height=8, fig.width=12}
+# summarize instead of select allows for nicely sorting
+
+plot_sp_cluster <- CRISPRscope_tbl %>% select(Organism, Strain, cluster_spacer) %>% 
+  distinct() %>% 
+  group_by(Organism) %>% 
+  summarise(Organism, cluster_spacer)%>% 
+  arrange(cluster_spacer) %>% 
+  distinct() %>% 
+  mutate(cluster_spacer = as_factor(cluster_spacer), Organism = as_factor(Organism)) %>% 
+  ggplot(aes(x=cluster_spacer, y=Organism)) +
+  geom_tile( fill = "blue", color = "transparent")+
+  theme_bw() +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text(hjust = 0, color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        axis.line.y.left = element_line(color = "black"),
+        axis.line.y.right = element_line(color = "black"),
+        axis.line.x.top = element_line(color = "black"),
+        axis.line.x.bottom = element_line(color = "black"),
+        axis.ticks = element_line(color = "black"),
+        panel.background = element_rect(fill = "white",colour = NA),
+        panel.grid.major = element_line(size = 0, linetype = 'solid',colour = "white"),
+        panel.grid.minor = element_line(size = 0, linetype = 'solid',colour = "white"),
+        plot.background = element_rect(fill = "white",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "right",
+        legend.background = element_rect(fill = "white", colour = NA),
+        legend.box.background = element_rect(fill = "white", colour = NA),
+        legend.text = element_text(color = "black"),
+        legend.title = element_text(color = "black")) +
+  xlab("80% similarity spacers clusters") +
+  ylab("Organism") 
+
+
+ggsave(
+  plot = plot_sp_cluster,
+  file = "./IMG/report/SpacersGenome80percent.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plot_sp_cluster
+```
+
+
+
+
+# Cas subtype / CCT
+
+```{r fig.height=8, fig.width=15}
+# With facets
+#plot <- CRISPRscope_tbl %>% ggplot(aes(x=Cas_subtype, fill=Cas_subtype)) + geom_bar() + facet_wrap(~Organism) + scale_y_log10()
+
+#new
+fff <- CRISPRscope_tbl %>% 
+  group_by(Organism) %>% 
+  mutate(nbstrain = n_distinct(Strain)) %>% 
+  summarize(ns = n_distinct(SpacerSeq), ns_norm = round(n_distinct(SpacerSeq)/nbstrain, digits = 3)) %>% 
+  distinct(Organism, ns, ns_norm) %>% 
+  arrange(-ns_norm) %>% 
+  ungroup()
+
+
+asdf$Organism <- factor(asdf$Organism, levels = fff$Organism)
+
+asdf <- CRISPRscope_tbl %>% count(Cas_subtype, Organism) # mutate(n = n/ number of strain)
+
+# Adjust + 1 for -infinity proplems. 
+# https://stackoverflow.com/questions/9502003/ggplot-scale-y-log10-issue
+
+asdf$nadj <- asdf$n + 1
+
+
+# order for the factors
+abundance_order <- asdf %>% group_by(Cas_subtype) %>% mutate(subtype_count = sum(n)) %>% distinct(Cas_subtype, subtype_count) %>% arrange(-subtype_count)
+
+
+
+asdf$Cas_subtype <- factor(asdf$Cas_subtype, levels = abundance_order$Cas_subtype)
+
+#new
+asdf$Organism <- factor(asdf$Organism, levels = fff$Organism)
+
+plt <- asdf %>% ggplot(aes(x=Organism, y = n, fill=Cas_subtype)) + 
+  geom_col(alpha = 0.8, color = "transparent") +
+  theme_bw() +
+  scale_fill_colorblind() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, color = "grey"),
+        axis.text.y = element_text(hjust = 0, color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        axis.line.y.left = element_line(color = "grey"),
+        axis.line.y.right = element_line(color = "grey"),
+        axis.line.x.top = element_line(color = "grey"),
+        axis.line.x.bottom = element_line(color = "grey"),
+        axis.ticks = element_line(color = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "right",
+        legend.text = element_text(color = "grey"),
+        legend.title = element_text(color = "grey"),
+        legend.background = element_rect(fill="transparent",
+                                  size=0, linetype="solid", 
+                                  colour ="transparent")) +
+  xlab("Species") +
+  ylab("Spacer count") +
+  ggtitle("Cas subtypes representation per species \nOrdered by #spacers per strain")
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_TRANS_nb_spacer_per_strain_distrib.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+ggplotly(plt)
+
+# Logscale not implemented yet in plot_ly
+
+```
+
+# *report* 
+
+```{r}
+# Add total strains next to name
+
+total_genomes <- CRISPRscope_tbl %>% 
+  group_by(Organism) %>% 
+  summarise(total_strain = n_distinct(Strain)) 
+
+
+# abs subtype abundance
+
+sbt_abds <- CRISPRscope_tbl %>%
+  group_by(Cas_subtype) %>% 
+  summarise(subtype_count = n_distinct(ArrayID))
+
+
+# count cas subtypes
+cas_per_species <- CRISPRscope_tbl %>%  
+  count(Cas_subtype, Organism, ArrayID) %>% 
+  count(Cas_subtype, Organism) %>% 
+  left_join(total_genomes, by = c("Organism")) %>% 
+  mutate(array_per_genome = n/total_strain) %>% 
+  mutate(Organism_txt = paste(gsub("_", " ", Organism), "(", total_strain, ")")) %>% 
+  select(Cas_subtype, Organism_txt, array_per_genome) %>% 
+  left_join(sbt_abds, by = c("Cas_subtype"))
+
+
+
+# Counts the number of array of cas subtype C in organism O
+pltcasspecies <- cas_per_species %>%
+  ggplot(aes(y = Organism_txt, x = Cas_subtype, fill = array_per_genome)) +
+  geom_tile(color = "gray") +
+  scale_fill_gradient(low = "light blue", high = "green") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      vjust = 1,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(hjust = 0, 
+                               color = "black",
+                               face = "italic"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    plot.title = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x.top = element_line(color = "black"),
+    axis.line.x.bottom = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    panel.grid.major = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    panel.grid.minor = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    plot.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    legend.position = "right",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black")
+  ) +
+  labs(fill = "Arrays/genomes \nratio") +
+  xlab("Cas-subtype") +
+  ylab(" ")
+
+
+top_hist <- sbt_abds %>% 
+  ggplot(aes(x=Cas_subtype, y=subtype_count)) + #, fill = ..y..)) + 
+  geom_histogram(stat = "identity", alpha = 0.6) +
+  #scale_fill_continuous(low = "grey", high = "black") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.y = element_text(vjust = 0, 
+                               color = "black",
+                               angle = 0),
+    legend.position = "none"
+  ) +
+  ylab("Array count") +
+  xlab("")
+
+top_hist
+
+
+
+pltcasspecies
+
+
+
+library(gridExtra)
+library(cowplot)
+library(egg)
+
+gg_hm <- pltcasspecies
+gg_row <- top_hist + theme(plot.margin=unit(c(1,1,-1,1), "cm"))
+
+
+
+# grid.newpage()
+# grid.draw(g)
+
+gfinal <- ggarrange(
+  gg_row, gg_hm,
+  nrow = 2, ncol = 1, heights = c(0.8, 3)
+)
+
+ggsave(
+  plot = gfinal,
+  file = "./IMG/report/Cas-Subtypes_organism.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+gfinal
+
+```
+
+
+```{r fig.height=8, fig.width=15}
+# With facets
+#plot <- CRISPRscope_tbl %>% ggplot(aes(x=Cas_subtype, fill=Cas_subtype)) + geom_bar() + facet_wrap(~Organism) + scale_y_log10()
+
+asdf <- CRISPRscope_tbl %>% count(Cas_subtype, Organism) # mutate(n = n/ number of strain)
+
+# Adjust + 1 for -infinity proplems. 
+# https://stackoverflow.com/questions/9502003/ggplot-scale-y-log10-issue
+
+asdf$nadj <- asdf$n + 1
+
+
+# order for the factors
+abundance_order <- asdf %>% group_by(Cas_subtype) %>% mutate(subtype_count = sum(n)) %>% distinct(Cas_subtype, subtype_count) %>% arrange(-subtype_count)
+
+
+
+asdf$Cas_subtype <- factor(asdf$Cas_subtype, levels = abundance_order$Cas_subtype)
+
+# plt <- asdf %>% ggplot(aes(x=Cas_subtype, y = n, fill=Organism)) + 
+#   geom_col() +
+#   theme_bw() +
+#   scale_fill_colorblind() +
+#   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1, color = "grey"),
+#         axis.text.y = element_text(hjust = -0.5, color = "grey"),
+#         axis.title.x = element_text(color = "grey"),
+#         axis.title.y = element_text(color = "grey"),
+#         plot.title = element_text(color = "grey"),
+#         axis.line.y.left = element_line(color = "grey"),
+#         axis.line.y.right = element_line(color = "grey"),
+#         axis.line.x.top = element_line(color = "grey"),
+#         axis.line.x.bottom = element_line(color = "grey"),
+#         axis.ticks = element_line(color = "grey"),
+#         panel.background = element_rect(fill = "transparent",colour = NA),
+#         plot.background = element_rect(fill = "transparent",colour = NA),
+#         plot.margin = unit(c(1,1,1,1), "cm"),
+#         legend.position = "right",
+#         legend.background = element_rect(fill = "transparent", colour = NA),
+#         legend.box.background = element_rect(fill = "transparent", colour = NA),
+#         legend.text = element_text(color = "grey"),
+#         legend.title = element_text(color = "grey")) +
+#   xlab("Cas subtype") +
+#   ylab("# spacers") +
+#   ggtitle("Species representation per Cas-subtypes")
+# 
+# ggsave(
+#   plot = plt,
+#   file = "./IMG/genome/DIALACT_TRANS_Species_per_cas_subtype.png",
+#   type = "cairo-png",
+#   bg = "transparent",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
+
+plt2 <- asdf %>% ggplot(aes(x=Cas_subtype, y = n, fill=Organism)) + 
+  geom_col() +
+  theme_bw() +
+  scale_fill_colorblind() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1, color = "black"),
+        axis.text.y = element_text(hjust = -0.5, color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        axis.line.y.left = element_line(color = "black"),
+        axis.line.y.right = element_line(color = "black"),
+        axis.line.x.top = element_line(color = "black"),
+        axis.line.x.bottom = element_line(color = "black"),
+        axis.ticks = element_line(color = "black"),
+        panel.background = element_rect(fill = "white",colour = NA),
+        plot.background = element_rect(fill = "white",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "right",
+        legend.background = element_rect(fill = "white", colour = NA),
+        legend.box.background = element_rect(fill = "white", colour = NA),
+        legend.text = element_text(color = "black"),
+        legend.title = element_text(color = "black")) +
+  xlab("Cas subtype") +
+  ylab("Number of spacers") 
+  #ggtitle("Species representation per Cas-subtypes")
+
+plt2
+
+ggsave(
+  plot = plt2,
+  file = "./IMG/report/SpeciesSubtype.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+
+# Logscale not implemented yet in plot_ly
+
+```
+
+# Cas General class / CCF
+
+```{r}
+
+```
+
+With CRISPRCasFinder, we can only easily parse the general class of the cas systems. Here we see the general class per organism, represented by spacer count.
+-> differences between class 1 and 2 (Evolutionary classification of CRISPR–Cas systems: a burst of class 2 and derived variants) Makarova 2020
+
+```{r fig.height=8, fig.width=15}
+asdf <- Dialact_cas
+
+# order for the factors
+abundance_order <- Dialact_cas %>% group_by(Organism) %>% summarise(Organism = Organism, org_count = n()) %>% distinct(Organism, org_count) %>% arrange(-org_count) %>% ungroup()
+
+asdf$Organism <- factor(asdf$Organism, levels = abundance_order$Organism)
+
+plt <- asdf %>%  ggplot(aes(x=Organism,  fill=CasType)) + 
+  geom_bar() + 
+  theme_bw() +
+  scale_fill_colorblind() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, color = "grey"),
+        axis.text.y = element_text(hjust = 0.2, color = "grey"),
+        axis.title.x = element_text(color = "grey"),
+        axis.title.y = element_text(color = "grey"),
+        plot.title = element_text(color = "grey"),
+        axis.line.y.left = element_line(color = "grey"),
+        axis.line.y.right = element_line(color = "grey"),
+        axis.line.x.top = element_line(color = "grey"),
+        axis.line.x.bottom = element_line(color = "grey"),
+        axis.ticks = element_line(color = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA),
+        plot.margin = unit(c(1,1,1,1), "cm"),
+        legend.position = "right",
+        legend.text = element_text(color = "grey"),
+        legend.title = element_text(color = "grey")) +
+  xlab("xlab") +
+  ylab("ylab") +
+  ggtitle("CRISPRCasFinder - Spacer count per class")
+
+ggsave(
+  plot = plt,
+  file = "./IMG/genome/DIALACT_Species_per_cas_subtype.png",
+  type = "cairo-png",
+  bg = "transparent",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+# TODO: normalize by strain
+
+plt
+ggplotly(plt)
+```
+
+# Cas genes / CCF
+
+
+
+```{r fig.height=8, fig.width=18}
+plot <- Dialact_genes %>% ggplot(aes(x=Gene, fill=Gene)) + 
+  geom_bar() + 
+  facet_wrap(~Organism) + 
+  scale_y_log10() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 4),
+        legend.position = "top")
+plot
+
+ggplotly(plot, width = 1500, height = 1200)
+```
+
+
+
+
+# ANI and spacers
+
+Compare the average nucleotide identity and the spacer content
+Do not compute unless changes in the data. Load file in next chunk.
+
+Weissella missing: the computation of ANI was done before a change in species content, thus weissella is not present here. 
+
+```{r eval=FALSE}
+# Read ANI file
+
+X20201219_ANI_output_all <- read_delim("C:/Users/thsch/Desktop/master_thesis/1_scripts/INPUT/20201219_ANI_output_all.txt", 
+    "\t", escape_double = FALSE, col_names = FALSE,trim_ws = TRUE)
+
+
+ANI_strain_pair <- X20201219_ANI_output_all %>% 
+  mutate(strain1 = str_split_fixed(X1, fixed("/"), 9)[,8] %>% gsub(".fna","",.)) %>% 
+  mutate(strain2 = str_split_fixed(X2, fixed("/"), 9)[,8] %>% gsub(".fna","",.)) %>% 
+  mutate(ANI = X3) %>% 
+  select(-X1, -X2, -X3, -X4, -X5) 
+
+
+# strain1         strain2         ANI
+# GCF.000648755.1	GCF.000648755.1	100.0000		
+# GCF.000648755.1	GCF.002220815.1	99.8994		
+# GCF.000648755.1	GCF.004000705.1	99.6107		
+# GCF.000648755.1	GCF.002868755.1	99.6047	
+
+# Not all the strains from the ANI are present in CRISPRscope_tbl
+all_ani_strains <- distinct(ANI_strain_pair %>% select(strain1))
+wanted_list <- distinct(CRISPRscope_tbl %>% select(Strain)) # -> 377 rows
+
+
+
+# Verification: 
+# 5 strains don't have their ANI calculated (acceptable loss)
+length(intersect(all_ani_strains$strain1, wanted_list$Strain))
+
+# Get Strain-ANI only if they are also in the main DF, remove the row otherwise
+ANI_strain_pair_filtered <- ANI_strain_pair %>% filter(strain1 %in% wanted_list$Strain) %>% filter(strain2 %in% wanted_list$Strain)
+
+distinct(ANI_strain_pair_filtered %>% select(strain1)) # -> 372 rows
+
+# Heavy load computation -> save the results to a file for next time !
+# spacer=true -> we want spacers !! 
+# spacer=false -> we want repeats !!
+# Note: uses CRISPRscope_tbl -> consider it global
+# Test: "GCF.000648755.1", "GCF.002220815.1"
+# get_pair_shared_seq <- function(strain1str, strain2str, spacer=TRUE){
+# 
+#   if(spacer){
+#     strain1_seq <- CRISPRscope_tbl %>% filter(Strain == strain1str) %>% select(SpacerSeq)
+#     strain1_seq <- strain1_seq$SpacerSeq
+# 
+#     strain2_seq <- CRISPRscope_tbl %>% filter(Strain == strain2str) %>% select(SpacerSeq)
+#     strain2_seq <- strain2_seq$SpacerSeq
+# 
+#   }else{
+#     strain1_seq <- CRISPRscope_tbl %>% filter(Strain == strain1str) %>% select(DR_seq)
+#     strain1_seq <- strain1_seq$SpacerSeq
+# 
+#     strain2_seq <- CRISPRscope_tbl %>% filter(Strain == strain2str) %>% select(DR_seq)
+#     strain2_seq <- strain2_seq$SpacerSeq
+#   }
+# 
+#   # Percentage of common sequences between the two strains
+#   score <- ((2 * length(intersect(strain1_seq , strain2_seq)))/(length(strain1_seq) + length(strain2_seq)))
+# 
+#   return(score)
+# }
+
+get_pair_shared_seq <- function(strain1str, strain2str, spacer=TRUE){
+
+  if(spacer){
+    strain1_seq <- CRISPRscope_tbl %>% filter(Strain == strain1str) %>% select(cluster_spacer)
+    strain1_seq <- strain1_seq$cluster_spacer
+
+    strain2_seq <- CRISPRscope_tbl %>% filter(Strain == strain2str) %>% select(cluster_spacer)
+    strain2_seq <- strain2_seq$cluster_spacer
+
+  }else{
+    strain1_seq <- CRISPRscope_tbl %>% filter(Strain == strain1str) %>% select(cluster_repeat)
+    strain1_seq <- strain1_seq$cluster_repeat
+
+    strain2_seq <- CRISPRscope_tbl %>% filter(Strain == strain2str) %>% select(cluster_repeat)
+    strain2_seq <- strain2_seq$cluster_repeat
+  }
+
+  # Percentage of common sequences between the two strains
+  score <- ((2 * length(intersect(strain1_seq , strain2_seq)))/(length(strain1_seq) + length(strain2_seq)))
+
+  return(score)
+}
+
+
+# Compute all shared spacer percent
+
+ANI_Shared_spacers_strain_pair_raw <- ANI_strain_pair_filtered %>% 
+  mutate(shared_spacers = map2(strain1, strain2, spacer=TRUE, get_pair_shared_seq))
+  #mutate(shared_spacers = purrr::pmap(list(strain1, strain2, spacer=TRUE), get_pair_shared_seq)) 
+
+# map functions returns listed data, we need to unlist and convert to double.
+# Adjust the scale
+# For plotting, remove the pairwise comparison of same strain. 
+ANI_Shared_spacers_strain_pair <- ANI_Shared_spacers_strain_pair_raw %>% 
+  mutate(shared_spacer_numeric = as.numeric(unlist(ANI_Shared_spacers_strain_pair_raw$shared_spacers))) %>% 
+  mutate(shared_spacer_numeric = shared_spacer_numeric * 100) %>% 
+  filter(strain1 != strain2) %>% 
+  select(-shared_spacers)
+
+
+
+#saveRDS(ANI_Shared_spacers_strain_pair, file = "./OUTPUT/ANI_Shared_spacers_strain_pair.rds")
+
+ANI_Shared_spacers_strain_pair %>% write.csv(file = "./OUTPUT/ANI_Shared_spacers_strain_pair.csv", row.names=FALSE)
+
+
+
+```
+
+
+
+Read the rds (or csv as you want) data of ANI - Shared spacers and plot them
+## plot All ANI - Shared SP
+
+### Load data
+```{r}
+ANI_Shared_spacers_strain_pair <- read_csv(file = "./OUTPUT/ANI_Shared_spacers_strain_pair.csv")
+
+
+
+# Only compare within species
+ANI_Shared_spacers_strain_pair_species <- ANI_Shared_spacers_strain_pair %>%  
+  left_join(distinct(select(CRISPRscope_tbl, Strain, Organism)), by = c("strain1" = "Strain")) %>% 
+  mutate(Organism1 = Organism) %>% select(-Organism) %>% 
+  left_join(distinct(select(CRISPRscope_tbl, Strain, Organism)), by = c("strain2" = "Strain")) %>% 
+  mutate(Organism2 = Organism) %>% select(-Organism) %>% 
+  filter(Organism1 == Organism2)
+
+
+```
+
+
+# *report*
+```{r fig.height=8, fig.width=15}
+species_list <-
+  distinct(ANI_Shared_spacers_strain_pair_species %>% select(Organism1))
+
+
+plot_per_species <- ANI_Shared_spacers_strain_pair_species %>% #filter(Organism1 == "Lactobacillus_delbrueckii") %>% 
+  ggplot(aes(x = ANI, y = shared_spacer_numeric)) +
+  geom_point(aes(color = Organism1), size = 0.2, alpha = 0.5) +
+  #geom_abline(intercept = quantile(ANI_Shared_spacers_strain_pair_species$shared_spacer_numeric)[[4]],slope = 0) +
+  ylab("Proportion of shared spacers [%]") +
+  xlab("ANI - Average Nucleotide Identity [%]") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "left",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  ) +
+  labs(color='Organism') + 
+  guides(colour = guide_legend(override.aes = list(alpha = 1)))
+
+plot_per_species <-
+  ggMarginal(plot_per_species, type = "boxplot", xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+
+
+ggsave(
+  plot = plot_per_species,
+  file = "./IMG/report/ANISpacerShared.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+
+plot_per_species
+
+
+```
+
+
+```{r fig.height=8, fig.width=15}
+species_list <-
+  distinct(ANI_Shared_spacers_strain_pair_species %>% select(Organism1))
+
+
+plot_per_species <- ANI_Shared_spacers_strain_pair_species %>%
+  ggplot(aes(x = ANI, y = shared_spacer_numeric)) +
+  geom_point(aes(color = Organism1), size = 0.7, alpha = 0.4) + 
+  #scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(trans = 'log10') +
+  geom_abline(
+    intercept = quantile(
+      ANI_Shared_spacers_strain_pair_species$shared_spacer_numeric
+    )[[4]],
+    slope = 0
+  )+
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "top",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  )
+
+# plot_per_species <-
+#   ggMarginal(plot_per_species + theme_bw() + theme(legend.position = "left"),
+#              type = "boxplot")
+
+
+ggsave(
+  plot = plot_per_species,
+  file = "./IMG/genome/TRANS_ANI_SpacerShared_nomargin_logscale.png",
+  type = "cairo-png",
+  bg = "white",
+  width = 45,
+  height = 25,
+  units = "cm",
+  dpi = 800
+)
+
+
+
+
+plot_per_species
+
+```
+```{r}
+quantile(
+      ANI_Shared_spacers_strain_pair_species$shared_spacer_numeric
+    )
+```
+# Hist with 0's
+
+To remove zeros -> show how much there are first
+Remove zeros to have a nice plot with ANI vs %shared spacers. 
+
+```{r}
+
+ANI_Shared_spacers_strain_pair_species %>% filter(shared_spacer_numeric > 0) %>% count()
+ANI_Shared_spacers_strain_pair_species %>% filter(shared_spacer_numeric == 0) %>% count()
+
+
+```
+
+
+```{r fig.height=8, fig.width=15}
+
+df_seg <- ANI_Shared_spacers_strain_pair_species %>% 
+  summarise(zero_shared = shared_spacer_numeric == 0) %>% 
+  count(zero_shared) %>% 
+  ggplot(aes(x = zero_shared, y = n)) +
+  geom_segment( aes(x=zero_shared, xend=zero_shared, y=0, yend=n), size=1, color="blue") +
+  geom_point( size=2, color="blue", alpha=0.7, shape=18, stroke=2) +
+  geom_text(aes(label=n),hjust=1.5, vjust=0) +
+  xlab("Spacers is unique") +
+  ylab("") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 49,
+      hjust = 1,
+      color = "black",
+      size = 12
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "top",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "white",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  )
+
+
+
+ggsave(
+  plot = df_seg,
+  file = "./IMG/report/ANI_zero_SpacerShared.pdf",
+  bg = "white",
+  width = 10,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+
+
+
+df_seg
+
+
+```
+
+
+
+# *report*
+## ANI zoom 
+```{r fig.height=10, fig.width=15}
+species_list <-
+  distinct(ANI_Shared_spacers_strain_pair_species %>% select(Organism1))
+
+df1 <- ANI_Shared_spacers_strain_pair_species  %>% filter(ANI > 95) %>% filter(shared_spacer_numeric > 0)
+#df1$shared_spacer_numeric = df1$shared_spacer_numeric + 0.1
+
+plot_ANI <- df1 %>% 
+  ggplot(aes(x = ANI, y = shared_spacer_numeric)) +
+  geom_point(aes(color = Organism1), size = 0.2, alpha = 0.3)+
+  scale_y_continuous(trans = 'log10') +
+  #geom_abline(intercept = quantile(ANI_Shared_spacers_strain_pair_species$shared_spacer_numeric)[[4]],slope = 0) +
+  ylab("Proportion of shared spacers [%]") +
+  xlab("ANI - Average Nucleotide Identity [%]") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "left",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  ) +
+  labs(color='Organism') + 
+  guides(colour = guide_legend(override.aes = list(alpha = 1)))
+
+ plot_ANI <-
+   ggMarginal(plot_ANI, type = "density", xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+
+
+ggsave(
+  plot = plot_ANI,
+  file = "./IMG/report/ANI_2_nonZero_density.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+
+
+
+plot_ANI
+
+#ggplotly(plot_ANI)
+
+```
+
+
+# Shared spacers 90% density
+#*report*
+
+```{r fig.height=10, fig.width=15}
+species_list <-
+  distinct(ANI_Shared_spacers_strain_pair_species %>% select(Organism1))
+
+df3 <- ANI_Shared_spacers_strain_pair_species  %>% filter(shared_spacer_numeric > 90)
+
+
+
+# Only closely related strains....
+mean(df3$ANI)
+#... share more than 90% of their spacers.
+
+
+plot_ANI45 <- df3 %>% ggplot(aes(x=ANI)) +
+  geom_density(color = "blue", size = 1) +
+  ylab("Density") +
+  xlab("ANI of strains that share 90% and more of their spacers [%]") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "left",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  )
+
+
+ggsave(
+  plot = plot_ANI45,
+  file = "./IMG/report/ANI_2_90_spacers_density.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+
+plot_ANI45
+
+#ggplotly(plot_ANI)
+
+```
+
+
+
+# ANI only 99+ density
+
+```{r fig.height=10, fig.width=15}
+species_list <-
+  distinct(ANI_Shared_spacers_strain_pair_species %>% select(Organism1))
+
+df3 <- ANI_Shared_spacers_strain_pair_species  %>% filter(ANI > 99)
+#df3$shared_spacer_numeric = df3$shared_spacer_numeric + 0.1
+
+plot_ANI3 <- df3 %>% ggplot(aes(x=shared_spacer_numeric)) +
+  geom_density() +
+  ylab("Density") +
+  xlab("Shared spacers for highly smilar strains (>= 99% ANI) [%]") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "left",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  )
+
+
+ggsave(
+  plot = plot_ANI3,
+  file = "./IMG/report/ANI_2_99ANI_density.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+
+plot_ANI3
+
+#ggplotly(plot_ANI)
+
+```
+
+
+
+```{r}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

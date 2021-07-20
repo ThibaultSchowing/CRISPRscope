@@ -1,0 +1,1212 @@
+---
+title: "2.2_CRISPRscope_metagenomic_analysis"
+author: "Thibault Schowing"
+date: "22/01/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# CRISPRscope meta data analysis
+
+## Library Imports
+```{r ,results='hide', echo=FALSE}
+library(readr)
+library(tidyverse)
+library(plotly)
+
+#remotes::install_github("wilkelab/ggridges")
+library(ggridges)
+
+#devtools::install_github('Mikata-Project/ggthemr')
+library(ggthemr)
+
+#library(reticulate)
+
+
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+# BiocManager::install("Biostrings")
+
+library(Biostrings)
+
+# Converts dataframe to fasta file
+#install.packages("seqRFLP")
+library("seqRFLP")
+
+```
+
+## Directories
+
+```{r}
+
+repository <- "C:/Users/thsch/Desktop/master_thesis_2" # Main git repository. 
+google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+```
+
+
+
+## Data Import
+```{r}
+
+
+# TBR ?
+#CRISPRscope_meta_tbl <- readRDS(file = "../0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl.rds")
+
+CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
+id_data = readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/id_data.rds", sep=""))
+
+
+# Metaphlan results
+
+allStrains_metaphlan <- read_delim(paste(repository, "/0_data/Metaphlan_results/allStrains_metaphlan.txt", sep=""), 
+                                   "\t", 
+                                   escape_double = FALSE, 
+                                   col_names = FALSE, 
+                                   trim_ws = TRUE) %>% 
+  mutate(ProjectID = X1, Sample = X2, Species = X3, RelAbundance = X4) %>% 
+  select(ProjectID, Sample, Species, RelAbundance) %>% 
+  mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Agroscope")) %>% 
+  mutate(Species = gsub("s__", "", Species)) 
+
+
+
+renameSamples <- function(imput_tibble) {
+  a <- imput_tibble %>%
+    mutate(ProjectID = replace(ProjectID, ProjectID == "PRJEB32768", "Walsh et al. 2020")) %>% 
+    mutate(ProjectID = replace(ProjectID, ProjectID == "PRJNA286900", "Pasolli et al. 2020")) %>% 
+    mutate(ProjectID = replace(ProjectID, ProjectID == "PRJEB30079", "Lordan et al. 2019")) %>% 
+    mutate(ProjectID = replace(ProjectID, ProjectID == "PRJEB23938", "Duru et al. 2018")) %>% 
+    mutate(ProjectID = replace(ProjectID, ProjectID == "PRJNA603575", "Pasolli et al. 2020")) %>% 
+    mutate(ProjectID = replace(ProjectID, ProjectID == "CheeseRaclette", "Swiss raclette"))  %>% 
+    mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Cheese starter cultures")) %>% 
+    mutate(ProjectID = replace(ProjectID, ProjectID == "Agroscope", "Cheese starter cultures")) %>% 
+    mutate(ProjectID = factor(ProjectID))
+  return(a)
+}
+
+```
+
+
+
+
+
+
+#---------------------
+
+
+# Random stuff
+
+```{r}
+#CRISPRscope_meta_tbl_filtered %>% filter(ProjectID == "PRJNA286900") %>% select(spacer_per_milread) %>% distinct()
+
+
+CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID) %>% distinct() %>% group_by(ProjectID) %>% summarise(n = n())
+
+```
+
+## Spacer sizes
+```{r}
+CRISPRscope_meta_tbl_filtered %>% select(spacer_seq) %>% mutate(l = str_length(spacer_seq)) %>% dplyr::count(l) %>% 
+  ggplot(aes(x=l, y=n)) +
+  geom_col()
+```
+
+# Number of samples - rind removed
+## <stat>
+
+```{r}
+# All samples with and without CRISPR. 
+sample_crispr_content <- CRISPRscope_meta_Project_Sample_list <- read_delim(paste(repository, "/0_data/IMPORT_EXPORT/CRISPRscope_meta_Project_Sample_list.csv", sep=""), 
+    ",", escape_double = FALSE, trim_ws = TRUE)
+
+
+# Metadata. Goal here is to remove the 22 samples from Rind of PRJEB32768
+# Attention to encoding and separator. 
+CRISPRscope_meta_METADATA <- read_delim(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),"\t", escape_double = FALSE, trim_ws = TRUE)
+
+# Get the samples from Rind
+rind_list <- CRISPRscope_meta_METADATA  %>% filter(`Sample_location (core rind)` == "Rind") %>% select(ProjectID, SRA_ID)
+# => 22 samples from PRJEB32768
+
+
+
+
+# we remove samples from rind
+sample_crispr_content <- sample_crispr_content %>% filter(!SRA_ID %in% rind_list$SRA_ID)
+
+sample_crispr_content %>% dplyr::count(CRISPR)
+
+#26/209 -> before rind removal
+
+# 187 metagenomes in total
+24/187
+
+
+
+```
+
+
+
+# Metadata 
+
+correction of manual metadata TMP by joining the crispr-less samples that were previously removed / ignored
+```{r, eval=FALSE}
+# 
+CRISPRscope_meta_Project_Sample_MANUAL_METADATA <- read_delim(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),
+    "\t", escape_double = FALSE, trim_ws = TRUE) %>% 
+  mutate(Animal = gsub("cow", "Cow", Animal))%>% 
+  mutate(Milk = gsub("raw", "Raw", Milk))
+
+
+metaData_updated <- sample_crispr_content %>%
+  left_join(CRISPRscope_meta_Project_Sample_MANUAL_METADATA, by = c("ProjectID", "SRA_ID")) %>%
+  select(-X1.y, -CRISPR.y) %>% dplyr::rename(contains_crispr = CRISPR.x) %>% 
+  arrange(ProjectID, SRA_ID)
+
+metaData_updated %>% write.csv(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_updated.csv", sep=""))
+
+```
+
+
+
+
+## <p> barchart
+Includes all samples, the ones with rind included. There are 22 of them and they are removed later. 
+```{r fig.height=8, fig.width=15}
+# id_data = id_data %>% 
+#     mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Agroscope"))
+
+sample_crispr_content <- renameSamples(sample_crispr_content)
+
+plt <- sample_crispr_content %>% 
+  mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Agroscope")) %>% 
+  dplyr::count(ProjectID, CRISPR) %>% 
+  ggplot(aes(x=ProjectID, y=n, fill=CRISPR))  +
+  labs(x = "", y = "Sample count") +
+  theme_bw() +
+  geom_col(position="stack") +
+  scale_fill_discrete(name = "Presence of \nCRISPR") +
+  theme(
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14),
+    axis.text.x = element_text(angle = 45, vjust = 0.6, color = "black"), 
+    plot.title = element_text(size = 15, face = "bold", color = "darkgreen"),
+    panel.grid.major = element_line(size = 0.25, linetype = 'solid',colour = "black"),
+    panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "black"),
+    panel.background = element_rect(fill = "white",colour = "black", linetype = 'solid', size = 0.5),
+    plot.background = element_rect(fill = "white",colour = NA),
+    plot.margin = unit(c(1,1,1,1), "cm"),
+    legend.position = "right",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black", size = 14),
+    legend.title = element_text(color = "black", size = 14)) + 
+  scale_fill_manual(values=c("black", "lightblue3"))
+# 
+# ggsave(
+#   plot = plt,
+#   file = "./IMG/report/10_BioProject_CRISPR_content.pdf",
+#   bg = "white",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
+  
+plt # %>% layout(title ="CRISPR content", annotations=list(yref='paper',xref="paper",y=1.05,x=1.15, text="Presence of CRISPR",showarrow=F) )
+```
+
+
+
+
+# Number of arrays - repeats - spacers
+## <stat>
+
+```{r}
+
+# Before filtering
+CRISPRscope_meta_tbl %>% summarise(n_spacer = n_distinct(cluster_spacer), n_repeat = n_distinct(cluster_repeat), n_array = n_distinct(GID))
+
+# After removing samples from rind
+CRISPRscope_meta_tbl_filtered %>% summarise(n_spacer = n_distinct(cluster_spacer), n_repeat = n_distinct(cluster_repeat), n_array = n_distinct(GID))
+
+```
+
+
+
+# Number of Spacers / mil. reads
+
+## <stat> mean sp/ mil.reads
+
+```{r}
+# CRISPRscope_meta_tbl %>% select(SRA_ID, spacer_per_milread) %>% distinct() %>% summarise(max_milread = max(spacer_per_milread), min_milread = min(spacer_per_milread) ,avg_milread = mean(spacer_per_milread), sd_milread = sd(spacer_per_milread))
+
+CRISPRscope_meta_tbl_filtered %>% select(SRA_ID, spacer_per_milread) %>% distinct() %>% summarise(max_milread = max(spacer_per_milread), min_milread = min(spacer_per_milread) ,avg_milread = mean(spacer_per_milread), sd_milread = sd(spacer_per_milread))
+
+CRISPRscope_meta_tbl_filtered %>% select(SRA_ID, repeat_per_milread) %>% distinct() %>% summarise(max_milread = max(repeat_per_milread), min_milread = min(repeat_per_milread) ,avg_milread = mean(repeat_per_milread), sd_milread = sd(repeat_per_milread))
+
+CRISPRscope_meta_tbl_filtered %>% select(SRA_ID, spacer_per_milread) %>% distinct() %>% 
+  ggplot(aes(x=spacer_per_milread)) +
+  geom_boxplot()
+```
+
+## <stat> million reads
+```{r}
+CRISPRscope_meta_tbl_filtered %>% summarise(min_rc = min(read_count), max_rc = max(read_count))
+```
+
+## <p> barchart avg spacer/milread / projects
+
+```{r fig.height=8, fig.width=12}
+CRISPRscope_meta_tbl_filtered_renamed <- renameSamples(CRISPRscope_meta_tbl_filtered)
+
+plot_milread <- CRISPRscope_meta_tbl_filtered_renamed %>%
+  mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Agroscope")) %>% 
+  select(ProjectID, SRA_ID, spacer_per_milread) %>% 
+  distinct() %>% 
+  group_by(ProjectID) %>%
+  summarise(ProjectID, avg_milread = mean(spacer_per_milread), sd_milread = sd(spacer_per_milread)) %>%
+  distinct() %>%
+  select(ProjectID, avg_milread, sd_milread) %>% ungroup() %>%
+  mutate(sd_milread = replace_na(sd_milread, 0)) %>% # 286900 has only 1 sample
+  arrange(desc(avg_milread)) %>% 
+  add_column(group = "spacers")
+
+
+# for repeats
+
+plot_milread_repeat <- CRISPRscope_meta_tbl_filtered_renamed %>%
+  mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Agroscope")) %>% 
+  select(ProjectID, SRA_ID, repeat_per_milread) %>% 
+  distinct() %>% 
+  group_by(ProjectID) %>%
+  summarise(ProjectID, avg_milread = mean(repeat_per_milread), sd_milread = sd(repeat_per_milread)) %>%
+  distinct() %>%
+  select(ProjectID, avg_milread, sd_milread) %>% ungroup() %>%
+  mutate(sd_milread = replace_na(sd_milread, 0)) %>% # 286900 has only 1 sample
+  arrange(desc(avg_milread)) %>% 
+  add_column(group = "repeats")
+
+plot_milread <- bind_rows(plot_milread, plot_milread_repeat)
+
+plot_milread <- renameSamples(plot_milread)
+
+plot_milread$ProjectID <- factor(plot_milread$ProjectID, 
+                                 levels = c("Walsh et al. 2020", "Swiss raclette","Lordan et al. 2019","Cheese starter cultures","Pasolli et al. 2020"))
+
+plot_milread$group <- factor(plot_milread$group, 
+                             levels = c("spacers", "repeats"))
+
+plt <- plot_milread %>% 
+  ggplot(aes(x = ProjectID, y = avg_milread, sd = sd_milread, colors = "darkblue")) + 
+  geom_point(aes(shape=group))+
+  geom_errorbar(aes(x = ProjectID, ymin=avg_milread-sd_milread, ymax=avg_milread+sd_milread), width=.2,
+                 position=position_dodge(0.05)) +
+  coord_flip()+
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14),
+    axis.text.x = element_text(
+      angle = 45,
+      vjust = 0.5,
+      hjust = 0.5,
+      color = "black"
+    ),
+    axis.text.y = element_text(hjust = 0, color = "black"),
+    axis.title.x = element_text(color = "black", vjust = 0.1),
+    axis.title.y = element_text(color = "black"),
+    plot.title = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x.top = element_line(color = "black"),
+    axis.line.x.bottom = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    panel.grid.major = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    panel.grid.minor = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    plot.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    legend.position = "none",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black")
+  ) +
+  ylab("Observed number per million reads") +
+  xlab("")+
+  facet_wrap(~group, scales = "free_x")
+
+  
+
+
+ggsave(
+  plot = plt,
+  file = paste(google_drive_folder,"/11_SP_DR_per_million_read.pdf", sep = ""),
+  bg = "white",
+  width = 15,
+  height = 10,
+  units = "cm",
+  dpi = 800
+)
+
+plt
+
+
+
+```
+
+
+## <p> barcharts spacer / milread / sample
+```{r  fig.height=20, fig.width=25}
+
+# https://stackoverflow.com/questions/38833042/r-making-bigger-graphs-when-using-facet-wrap
+
+#
+# Per sample, number of spacers per million reads
+# input: unmerged stats
+# Call: nb_spacers_norm
+
+# # TODO: to match all the graphs, maybe order by the same as the "number of arrays " graph.
+# 
+# nb_sp_nrm <- nb_spacers_norm(stats_data) %>%
+#   arrange(normalized_total) %>%
+#   mutate(SRA_ID = fct_reorder(SRA_ID, normalized_total))
+# 
+
+
+
+CRISPRscope_meta_tbl_filtered %>% select(spacer_per_milread) %>% distinct()
+
+
+df_spacer_mil_reads <- CRISPRscope_meta_tbl %>% 
+  select(ProjectID, SRA_ID, spacer_per_milread) %>% 
+  distinct() %>% 
+  mutate(ProjectID = as.factor(ProjectID), SRA_ID = fct_reorder(SRA_ID, spacer_per_milread)) %>% 
+  group_by(ProjectID) %>% 
+  arrange(spacer_per_milread, by_group = TRUE) %>% 
+  ungroup()
+
+plot_milreads <- df_spacer_mil_reads %>% 
+  ggplot(aes(x=SRA_ID, y=spacer_per_milread)) +
+  geom_bar(stat="identity", fill="orange", alpha=.6, width=.5)+
+  ylab("Number of spacers per million reads") +
+  xlab("Sample") +
+  ggtitle("Number of spacers per million reads") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  facet_wrap(~ProjectID, scales='free_x') 
+
+
+
+plot_milreads
+
+```
+
+
+
+
+
+
+# Cas-Subtypes per projects
+## <p> Heatmap
+```{r  fig.height=20, fig.width=25}
+#View(CRISPRscope_meta_tbl)
+plt_castype <- CRISPRscope_meta_tbl_filtered %>%
+  mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Agroscope")) %>%
+  dplyr::count(ProjectID, Subtype, GID) %>% 
+  dplyr::count(Subtype, ProjectID) %>% 
+  select(ProjectID, Subtype, n) %>%
+  ggplot(aes(x = ProjectID, y = Subtype, fill = n)) +
+  geom_tile(color = "gray") +
+  scale_fill_gradient(low = "lightblue", high = "black") +
+  theme_bw() +
+  theme(
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 14),
+    axis.text.x = element_text(
+      angle = 45,
+      vjust = 1,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(hjust = 0, color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    plot.title = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x.top = element_line(color = "black"),
+    axis.line.x.bottom = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    panel.grid.major = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    panel.grid.minor = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    plot.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    legend.position = "right",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black", size = 14),
+    legend.title = element_text(color = "black", size = 14)
+  ) +
+  labs(fill = "Array count") +
+  xlab("Bioproject") +
+  ylab("Cas-subtype")
+
+
+ggsave(
+  plot = plt_castype,
+  file = "./IMG/report/13_Cas-Subtypes_bioproject.pdf",
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plt_castype
+
+
+```
+
+
+
+
+
+#------------------------------
+
+# Repeats and Spacers sharing
+## WIP repeats shared vs meso-thermo
+
+```{r}
+# Raclette / Lordan et al. Walsh et al => Mesophillic
+# Starter / Pasolli => thermophillic 
+
+
+typed_CRISPRscope_meta_tbl_filtered <- CRISPRscope_meta_tbl_filtered %>% renameSamples() %>% 
+  mutate(type = ifelse(ProjectID == "Swiss raclette", "Mesophilic", NA)) %>% 
+  mutate(type = ifelse(ProjectID == "Lordan et al. 2019", "Mesophilic", type)) %>% 
+  mutate(type = ifelse(ProjectID == "Walsh et al. 2020", "Mesophilic", type)) %>% 
+  mutate(type = ifelse(ProjectID == "Swiss starter culture", "Thermophilic", type)) %>%
+  mutate(type = ifelse(ProjectID == "Pasolli et al. 2020", "Thermophilic", type)) %>%
+  select(ProjectID, type, cluster_repeat_identity, cluster_spacer_identity) %>% 
+  mutate(ProjectID = paste(ProjectID, " (", type, ")", sep = ""))
+
+
+# Percentage of shared repeats between pairs of projects vs between type (meso thermo)
+
+
+byproject <- typed_CRISPRscope_meta_tbl_filtered %>% 
+  group_by(ProjectID) %>% 
+  summarise(Repeat_cluster_100 = cluster_spacer_identity) %>% 
+  distinct() %>% ungroup() %>% 
+  group_by(Repeat_cluster_100) %>% 
+  summarise(Repeat_cluster_100 = Repeat_cluster_100, count = n()) %>% 
+  distinct() %>% 
+  right_join(typed_CRISPRscope_meta_tbl_filtered %>% select(ProjectID, cluster_repeat_identity) %>% distinct(), 
+             by=c("Repeat_cluster_100" = "cluster_repeat_identity")) %>% 
+  ungroup() %>% mutate(count=Repeat_cluster_100) %>% 
+  spread_(key_col = "ProjectID", value_col = "count") %>% 
+  select(-Repeat_cluster_100)
+
+
+project_combn = t(combn(c(colnames(byproject)), 2))
+
+project_combination = tibble(x = project_combn[,1], y = project_combn[,2])  # NO REPETITION (BUT NOT COMPLETE MATRIX)
+
+
+
+f100 <- function(x,y){
+  z = c(byproject %>% select(x) == byproject %>% select(y))
+  
+  return(sum(z, na.rm = TRUE))
+}
+
+
+
+
+projects_combination.spacer_shared_100 <- project_combination %>% mutate(shared_repeats = map2_dbl(x,y,f100)) %>% 
+  mutate_at(c("shared_repeats"), ~(rescale(., c(0,1)) %>% as.vector))   # scales between 0 and 1, keeps NA
+
+
+projects_combination.spacer_shared_100 %>% 
+  # mutate(x = factor(species_combination.spacer_shared_100$x, levels = species_levels_21)) %>% 
+  # mutate(y = factor(species_combination.spacer_shared_100$y, levels = species_levels_21)) %>% 
+  ggplot(aes(x=x, y=y,fill=shared_repeats)) +
+  geom_tile() + 
+  theme_classic() + 
+  scale_fill_gradientn(colours = c("grey", "blue", "red"), values = c(0,0.001,1))+
+  scale_y_discrete(labels = function(x) str_replace(x, "_", " "), limits=rev) +
+  scale_x_discrete(labels = function(x) str_replace(x, "_", " "), limits=rev) +
+  theme(
+    axis.text.x = element_text(
+      hjust = 1,
+      color = "black",
+      size = 12,
+      face = "italic",
+      angle = 45
+    ),
+    axis.text.y = element_text(
+      hjust = 1,
+      color = "black",
+      size = 12,
+      face = "italic"
+    ),
+    #axis.text.y = element_blank(), # comment / uncomment for y axis text
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "right",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "grey", size = 0.1),
+    panel.grid.minor = element_line(color = "grey", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "white",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "grey")
+  ) +
+  ylab("") +
+  xlab("Shared repeats (100% identity clusters)")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+## Export vincent rarefaction curve
+
+Export for Rarefaction curve computing
+
+Question: Do you know if the repeats you find in the metagenome occur in multiple metagenomic samples or only in one? Can you make a dataframe with metagenomic samples on the y-axis and repeat on the x-axis and within the data.frame you have the presence/absence or coverage or spacer count of the repeat?
+
+```{r}
+CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, cluster_repeat_identity, cluster_repeat) %>% distinct() %>% 
+  write.csv(file = paste(repository, "/0_data/EXPORT/metagenome_repeats_by_projects.csv", sep=""))
+
+CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, cluster_spacer_identity, cluster_spacer) %>% distinct() %>% 
+  write.csv(file = paste(repository, "/0_data/EXPORT/metagenome_spacers_by_projects.csv", sep=""))
+```
+
+
+
+## TEST sample comparison
+compare samples from the same project 
+
+Subset the data to take only Gruyère samples
+```{r }
+selected_sra <- CRISPRscope_meta_METADATA %>% filter(Cheese_type == "Gruyere") %>% select(SRA_ID) %>% unlist()
+
+selected_data <- CRISPRscope_meta_tbl_filtered %>% filter(SRA_ID %in% selected_sra)
+
+selected_data_2 <- CRISPRscope_meta_tbl_filtered 
+```
+
+Metaphlan results
+```{r fig.height=8, fig.width=22}
+allStrains_metaphlan %>% filter(Sample %in% selected_sra & RelAbundance > 0.5) %>% select(Sample, Species, RelAbundance) %>% 
+  ggplot(aes(x = Sample, y = RelAbundance, fill = Species, )) + 
+  geom_bar(position = "dodge", stat = "identity")+
+  theme_bw() +
+  theme(
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 14),
+    axis.text.x = element_text(
+      angle = 45,
+      vjust = 1,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(hjust = 0, color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    plot.title = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x.top = element_line(color = "black"),
+    axis.line.x.bottom = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    panel.grid.major = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    panel.grid.minor = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    plot.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    legend.position = "right",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black", size = 14),
+    legend.title = element_text(color = "black", size = 14)
+  ) +
+  labs(fill = "Array count", title = "Gruyère samples comparison") +
+  xlab("Sample") +
+  ylab("Relative abundance") 
+```
+
+
+
+Plot Cas types
+```{r fig.height=6, fig.width=9}
+selected_data %>%
+  dplyr::count(SRA_ID, Subtype, GID) %>% 
+  dplyr::count(Subtype, SRA_ID) %>% 
+  select(SRA_ID, Subtype, n) %>%
+  ggplot(aes(x = SRA_ID, y = Subtype, fill = n)) +
+  geom_tile(color = "gray") +
+  scale_fill_gradient(low = "lightblue", high = "black") +
+  theme_bw() +
+  theme(
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 14),
+    axis.text.x = element_text(
+      angle = 45,
+      vjust = 1,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(hjust = 0, color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    plot.title = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x.top = element_line(color = "black"),
+    axis.line.x.bottom = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    panel.grid.major = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    panel.grid.minor = element_line(
+      size = 0,
+      linetype = 'solid',
+      colour = "white"
+    ),
+    plot.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    legend.position = "right",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black", size = 14),
+    legend.title = element_text(color = "black", size = 14)
+  ) +
+  labs(fill = "Array count", title = "Gruyère samples comparison") +
+  xlab("Sample") +
+  ylab("Cas-subtype") 
+
+
+```
+
+
+
+
+
+
+
+
+#------------------------------
+
+# Mapping DR-SP-DR
+
+!! Pay attention to ^m (ctrl-v ctrl-m in bash) character. These invisible whitespaces can cause problems in the script (0 coverage)
+
+When the computation is done merge the two (proto)spacer files with: 
+```{bash, eval=F}
+
+cut -f 4,5,10 ./allSamples_spacer_coverage.bed > ./allSamples_spacer_coverage_short.bed
+cut -f 5 ./allSamples_protospacer_coverage.bed > ./allSamples_spacer_coverage_tmp.bed
+echo -e "spacer_name\tspacer_cov\tsample\tprotospacer_cov" > ./allSamples_coverages_final.bed
+paste -d '\t' ./allSamples_spacer_coverage_short.bed ~/allSamples_spacer_coverage_tmp.bed >>  ./allSamples_coverages_final.bed
+
+
+```
+
+```{r fig.height=8, fig.width=12}
+##-----------------------------------------------
+##------------------------import data
+##-----------------------------------------------
+
+
+CRISPR_spacer_coverage_start <- read_delim(paste(repository, "/0_data/IMPORT/allSamples_coverages_final.bed", sep=""), "\t", escape_double = FALSE, trim_ws = TRUE)
+
+reads4normalization <- read_delim(paste(repository, "/0_data/IMPORT/reads4normalization.txt", sep=""),  "\t", escape_double = FALSE, col_names = c("bioproject","sample","readNumber"), trim_ws = TRUE)
+
+CRISPR_spacer_coverage_cleaned <- CRISPR_spacer_coverage_start %>% filter(spacer_cov!=0 & protospacer_cov!=0)
+dim(CRISPR_spacer_coverage_cleaned)
+#dim(CRISPR_spacer_coverage)
+
+
+
+##-----------------------------------------------
+###----------------normalize with total number of reads per sample
+##-----------------------------------------------
+CRISPR_spacer_coverage <- merge(CRISPR_spacer_coverage_cleaned,reads4normalization,by="sample",all.x = TRUE)
+CRISPR_spacer_coverage$spacer_CPM <- 1000000*(CRISPR_spacer_coverage$spacer_cov/CRISPR_spacer_coverage$readNumber)
+CRISPR_spacer_coverage$protospacer_CPM <- 1000000*(CRISPR_spacer_coverage$protospacer_cov/CRISPR_spacer_coverage$readNumber)
+
+summary(CRISPR_spacer_coverage)
+
+CRISPR_spacer_coverage %>% write_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""))
+
+
+```
+
+
+# <p> spacer vs protospacer
+
+
+
+
+```{r fig.height=8, fig.width=12}
+##-----------------------------------------------
+###----------------plot
+##-----------------------------------------------
+library(viridis)
+# spacer name and subtype
+
+snast <- CRISPRscope_meta_tbl_filtered %>% mutate(ProjectID2 = ProjectID) %>% unite(spacer_name, c("ProjectID", "SRA_ID","GID","SPID","Coverage"), sep = "_") %>% select(spacer_name, Subtype)
+
+plt_coverage = CRISPR_spacer_coverage %>% left_join(snast, by=c("spacer_name")) 
+```
+
+
+```{r fig.height=8, fig.width=12}
+my.formula <- y ~ x
+library(ggpmisc)
+plot <-
+  ggplot(plt_coverage, aes(x = spacer_CPM, y = protospacer_CPM)) +
+  geom_point(alpha = 0.7, size = 0.2) + #aes(color= Subtype),
+  #scale_color_viridis_d() +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(trans = 'log10') +
+  labs(x = "spacer [cpm]", y = "protospacers  [cpm]") +
+  #geom_point(aes(fill = Subtype),alpha = 0.4, size = 0.2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  stat_poly_eq(formula = my.formula,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+               parse = TRUE, ) +
+  theme_bw() + 
+  theme(
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 18),
+    legend.text = element_text(color = "black", size = 14),
+    legend.title = element_text(color = "black", size = 14),
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "top",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    #panel.grid.major = element_line(color = "black", size = 0.1),
+    #panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  ) 
+  #facet_wrap(~Subtype)
+
+
+ggsave(
+  plot = plot,
+  file = "./IMG/report/15_SpacerProtospacerAbundance.pdf",
+  bg = "white",
+  width = 15,
+  height = 25,
+  units = "cm",
+  dpi = 800
+)
+
+# ggsave(
+#   plot = plot,
+#   file = "./IMG/poster/15_SpacerProtospacerAbundance.svg",
+#   bg = "white",
+#   width = 20,
+#   height = 25,
+#   units = "cm",
+#   dpi = 800
+# )
+
+plot
+```
+
+## Facet version
+```{r fig.height=8, fig.width=12}
+my.formula <- y ~ x
+library(ggpmisc)
+
+plot2 <-
+  ggplot(plt_coverage, aes(x = spacer_CPM, y = protospacer_CPM)) +
+  geom_point(alpha = 0.7, size = 0.2) + #aes(color= Subtype),
+  #scale_color_viridis_d() +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(trans = 'log10') +
+  labs(x = "spacer [cpm]", y = "protospacers  [cpm]") +
+  #geom_point(aes(fill = Subtype),alpha = 0.4, size = 0.2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  stat_poly_eq(formula = my.formula,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+               parse = TRUE, ) +
+  theme_bw() + 
+  theme(
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 18),
+    legend.text = element_text(color = "black", size = 14),
+    legend.title = element_text(color = "black", size = 14),
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "top",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    #panel.grid.major = element_line(color = "black", size = 0.1),
+    #panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  ) +
+  facet_wrap(~Subtype)
+
+plot3 <-
+  ggplot(plt_coverage %>% mutate(ProjectID = bioproject) %>% renameSamples(), aes(x = spacer_CPM, y = protospacer_CPM)) +
+  geom_point(alpha = 0.7, size = 0.2) + #aes(color= Subtype),
+  #scale_color_viridis_d() +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(trans = 'log10') +
+  labs(x = "spacer [cpm]", y = "protospacers  [cpm]") +
+  #geom_point(aes(fill = Subtype),alpha = 0.4, size = 0.2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  stat_poly_eq(formula = my.formula,
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+               parse = TRUE, ) +
+  theme_bw() + 
+  theme(
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 18),
+    legend.text = element_text(color = "black", size = 14),
+    legend.title = element_text(color = "black", size = 14),
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "top",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    #panel.grid.major = element_line(color = "black", size = 0.1),
+    #panel.grid.minor = element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  ) +
+  facet_wrap(~ProjectID)
+
+plot2
+
+plot3
+
+ggsave(
+  plot = plot3,
+  file = paste(google_drive_folder,"/Spacer_protospacer_facets_projectid.png", sep = ""),
+  bg = "white",
+  width = 30,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+```
+
+
+# <processing> Spacer vs 0 protospacers
+```{r}
+
+# Always take spacers with >0 coverage -> otherwise wrong samples and only 0's
+
+# Spacers that have no match in the metagenome
+CRISPR_spacer_coverage_zero_protospacer <- CRISPR_spacer_coverage_start %>% filter(spacer_cov!=0 & protospacer_cov==0)
+
+# Spacers that have a match in the metagenome
+CRISPR_spacer_coverage_nonzero_protospacer <- CRISPR_spacer_coverage_start %>% filter(spacer_cov!=0 & protospacer_cov!=0)
+
+# a = proportion of spacers without a target
+# b = proportion of spacers with a target
+a = CRISPR_spacer_coverage_zero_protospacer %>% dplyr::count(protospacer_cov) %>% summarise(tot = sum(n))
+b = CRISPR_spacer_coverage_nonzero_protospacer %>% dplyr::count(protospacer_cov) %>% summarise(tot = sum(n))
+a # 7677
+b # 12075
+spacers_tot = CRISPR_spacer_coverage_start %>% filter(spacer_cov!=0) # a + b = 19752
+
+# percentage of spacers without a target 
+a$tot / (a$tot + b$tot) # 0.3886695
+
+```
+
+
+
+
+#------------------------------
+
+
+# TODO Relation between species abudnance and coverage of spacers. 
+
+
+
+
+
+
+
+#------------------------------
+
+# TMP count reads mapping 
+diversity. Count spacer reads per sample - classify
+
+
+
+```{r fig.height=8, fig.width=10}
+# metaData_updated
+# CRISPR_spacer_coverage
+
+meta_readcount <- left_join(CRISPR_spacer_coverage, metaData_updated, by=c("sample" = "SRA_ID")) %>% 
+  filter(spacer_CPM < 7500) # remove extreme values
+
+meta_readcount %>% select(sample) %>% distinct()
+```
+
+ maybe go for the repeats instead of spacers 
+ 
+ 
+```{r fig.height=8, fig.width=10}
+# meta_readcount %>% select(-X1.x) %>% filter(Animal != "NA") %>% 
+#   ggplot(aes(x=spacer_CPM)) + 
+#   geom_density_ridges(aes(x=spacer_CPM, y=Animal)) +
+#   geom_jitter(aes(x=spacer_CPM, y=Cheese_type), size = 0.2)
+# 
+# meta_readcount %>% select(-X1.x) %>% filter(Milk != "NA") %>% 
+#   ggplot(aes(x=spacer_CPM)) + 
+#   geom_density_ridges(aes(x=spacer_CPM, y=Milk)) +
+#   geom_jitter(aes(x=spacer_CPM, y=Cheese_type), size = 0.2) 
+
+meta_readcount %>% select(-X1.x) %>% filter(Cheese_type != "NA") %>% 
+  ggplot() + 
+  geom_density_ridges(aes(x=spacer_CPM, y=Cheese_type)) + 
+  geom_jitter(aes(x=spacer_CPM, y=Cheese_type), size = 0.2) +
+  theme_bw() +
+  theme(
+  #   axis.text.y = element_text(
+  #     hjust = 1,
+  #     color = "black",
+  #     size = 12,
+  #     face = "italic"
+  #   ),
+    axis.text.x = element_text(color = "black"),
+    #axis.text.y = element_blank(), # comment / uncomment for y axis text
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "none",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_line(color = "grey", size = 0.1),
+    panel.grid.minor = element_line(color = "grey", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "white",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "grey")
+  ) +
+  ylab("") +
+  xlab("Spacers count per million reads (CPM)")
+
+
+
+```
+
+
+
+THIS SPACER MAKES MORES ENSE FOR DIVERSITY OF SPACERS 
+
+
+
+
+
+
+
+
+
+
+#----------------
+# Vincent: presence absence per metagenome
+
+```{r fig.height=28, fig.width=10}
+
+
+All_metagenomic_spacer_clusters <- CRISPRscope_meta_tbl_filtered %>% select(cluster_spacer_identity) %>% distinct()
+
+library(easyr)
+
+asdf <- function(value){
+  value <- as.numeric(value)
+  if(value != 0){
+    return(1)
+  }else{
+    return(0)
+  }
+}
+
+
+  
+Spacer_per_sample <- CRISPRscope_meta_tbl_filtered %>% 
+  select(cluster_spacer_identity, SRA_ID) %>% 
+  distinct() %>% 
+  spread(key = SRA_ID, value = SRA_ID) %>% 
+  mutate(across(!cluster_spacer_identity,  function(x) tidyr::replace_na(x, 0))) %>% 
+  mutate(across(!cluster_spacer_identity, function(x) !grepl("^0$", x) ))
+
+Spacer_per_sample %>% 
+  write.csv(file = paste(repository, "/0_data/EXPORT/cluster_by_sample_spread.csv", sep=""), quote = F, row.names = FALSE, col.names = TRUE)
+
+
+Spacer_per_sample %>% gather(key = "sample", value = "value", -cluster_spacer_identity) %>% 
+  ggplot(aes(x =cluster_spacer_identity, y = sample)) + 
+  geom_tile() +
+  theme_bw()
+
+
+
+  
+# CRISPRscope_meta_tbl_filtered %>% 
+#   select(cluster_spacer_identity, SRA_ID) %>% 
+#   distinct() %>% 
+#   spread(key = SRA_ID, value = SRA_ID, fill = 0) %>% 
+#   write.csv(file = "./OUTPUT/Vincent/cluster_by_sample_spread.csv", quote = F, row.names = FALSE, col.names = TRUE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

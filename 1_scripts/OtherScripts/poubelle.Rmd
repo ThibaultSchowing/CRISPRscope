@@ -1,0 +1,112 @@
+---
+title: "trash"
+output: html_notebook
+---
+
+```{r}
+library(dplyr, warn.conflicts = F)
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+
+# creating  the data
+d <- tibble(year=rep(2016:2017,2), type=c(1,1,2,2), amount=1:4)
+d
+
+nested_data <- d %>% 
+  nest(-year)
+nested_data
+
+charts <- nested_data %>%
+  mutate(plots = map2(data, year, ~ plot_ly(.x, values = ~amount, type = 'pie') %>% layout(title = .y)))
+
+
+charts
+
+
+charts$plots[1]
+charts$plots[2]
+
+
+```
+
+```{r}
+tb %>%
+  filter(
+    species %in% interest
+  ) %>% 
+  group_by(species) %>%
+  summarise(
+    n = n()
+  ) 
+```
+
+```{r}
+chartss <- nested_tb %>%
+  mutate(plots = map2(data, species, ~ plot_ly(.x, labels = factor(cluster), values = ~unique(factor(cluster)), type = 'pie') %>% layout(title = .y)))
+
+chartss
+chartss$plots[1]
+chartss$plots[2]
+chartss$plots[3]
+
+```
+
+
+With ggplot... todo
+```{r}
+
+
+plt <- tb %>%
+  group_by(species, cluster) %>%
+  filter(
+    species %in% interest
+  ) %>%
+  summarise(
+    mean = mean(abs(is_ref)), n = n(), max = max(abs(is_ref)), min = min(abs(is_ref))
+  ) %>%
+   do(plots=ggplot(data=.) +
+         aes(x=factor(cluster), y=n) + geom_point() + ggtitle(unique(.$Species))
+      )
+
+plt$plots
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

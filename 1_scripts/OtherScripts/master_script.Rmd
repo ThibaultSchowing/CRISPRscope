@@ -1,0 +1,1836 @@
+---
+title: "master_script"
+author: "Thibault Schowing"
+date: "15/07/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Notebook Setup
+
+Load packages here
+
+```{r}
+library("tidyverse")
+
+
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+# https://community.rstudio.com/t/is-there-a-tidy-way-to-iterate-a-data-frame-tibble-and-produce-side-effects-based-on-the-value-of-each-row/52382/4
+library(slider)
+
+library(stats)
+
+# Plot themes
+#-------------
+library(ggthemes)
+
+# set ggthemr theme
+ggthemr("Earth") 
+# plot your existing figure with the new theme
+
+# to remove all ggthemr effects later:
+#ggthemr_reset()
+
+library(ggthemr)
+
+
+
+# RETICULATE - Use Python with RStudio
+#=======================================
+#loading required R libraries 
+library(reticulate) #the superpower bridges python and R.
+
+virtualenv_list()
+#--------- virtualenv is an efficient but old way to use virtual environment. Conda environment (or pipenv) are better
+#---------virtualenv_create("crisprscope_reticulate")
+#---------use_virtualenv("crisprscope_reticulate")
+#---------py_install("seaborn", envname = "crisprscope_reticulate")
+
+# CONDA env
+# conda_create("crisprscope_reticulate_conda")
+use_condaenv("crisprscope_reticulate_conda")
+
+conda_install(envname = "crisprscope_reticulate_conda", packages = c("seaborn", "matplotlib"))
+
+```
+
+## Python packages virtualenv
+
+Import python packages installed in the crisprscope_reticulate_conda environment. 
+
+```{python}
+import seaborn as sns
+import matplotlib as mpl
+
+
+
+```
+
+
+
+
+
+
+# CRISPRCasFinder on Dialact
+
+Aborted until further notice
+*Intermediary results* -> Database of detected *Direct Repeats* from Dialact available
+
+## CCF task creator
+The following script creates for each organism (e.g. Lb_delbruekii) a sbatch file performing CRISPRCasFinder on all assemblies. 
+
+*0_CRISPRCasFinder_task_launcher.sh*
+
+
+
+
+## Parse CRISPR_report
+
+Parsing of the CrisprReport from CRISPRCasFinder ==> will be replaced by parsing the .json
+*parse_crispr_result.sh*
+
+
+
+## Parse CasReport
+
+Parsing of the CasReport from CRISPRCasFinder ==> will be replaced by parsing the .json
+*parse_cas_result.py*
+
+
+## Generate unique report and database
+Generates a report per organism and merge them into a DR database (Cas not available)
+
+
+
+*1_report_generator.sh*
+
+
+
+*2_merge_results.sh*
+
+
+
+
+## Geting the spacers
+
+The previous reports only give the DR consensus. The spacers are only present in the result.json file (viewable with CRISPRview).
+The following script extracts the spacers and output a CSV file and a FASTA file. 
+
+INPUT: *result.json* from CRISPRCasFinder (without the -cas option)
+OUTPUT: *ORGANISM_CRISPR_v1.csv* and *ORGANISM_CRISPR_v1.fasta*
+
+*3_resultjson_parser.py*
+
+
+
+
+
+
+
+
+
+# CRISPRCasFinder Database v1
+
+## Basic stats on CCFDB
+
+```{r}
+library(readr)
+CrisprCasFinderDB_dr_1_extended <- read_delim("C:/Users/thsch/Desktop/master_thesis/0_data/DB/CrisprCasFinderDB_dr_1_extended.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+
+View(CrisprCasFinderDB_dr_1_extended)
+```
+
+
+
+
+
+## Cas type and Clustering
+
+Clustering was made with cd-hit-est with a similarity threshold of 80%
+
+### Convertion of the csv data to fasta
+
+
+
+
+Then perform the cd-hit-est. Various statistics can be extracted like the proportion of CAS protein in the clusters.
+
+### Cd-hit-est and various stats
+
+
+
+
+
+
+
+### CAS type diversity 
+
+Cas type diversity between CCF database and clustered CCF database (clustered with cd-hit-est)
+
+```{r}
+prop_CCF_db <- read.csv("../3_analysis/CCF_DB_1_crispr_class_proportion.out", sep = ' ', col.names = c("nb", "class"), header = F)
+
+prop_clustered_CCF_DB <- read.csv("../3_analysis/cluster_crispr_proportion.out", sep = ' ', col.names = c("nb", "class"), header = F)
+
+#dim(prop_CCF_db);typeof(prop_CCF_db)
+#dim(prop_clustered_CCF_DB)
+
+df_ccf <- as.data.frame(prop_CCF_db)
+df_clustered_ccf <- as.data.frame(prop_clustered_CCF_DB)
+
+df_ccf <- df_ccf %>% arrange(class)
+df_clustered_ccf <- df_clustered_ccf %>% arrange(class)
+
+
+```
+
+
+
+
+Barcharts of Cas type diversity
+
+add percent to df
+
+```{r}
+
+df_ccf = mutate(df_ccf,
+                pct = nb/sum(nb)*100)
+
+df_clustered_ccf = mutate(df_clustered_ccf,
+                pct = nb/sum(nb)*100)
+```
+
+
+
+```{r}
+library(plotly)
+
+fig <- NULL
+fig <- plot_ly(df_ccf, x = ~class, y = ~pct, type = 'bar') %>%  
+  layout(title = "Proportion of Cas types in CRISPRCasFinder Database",
+         xaxis = list(title = "Cas types", tickangle = 45),
+         yaxis = list(title = "Proportion"))
+
+fig
+```
+
+```{r}
+
+fig <- NULL
+fig <- plot_ly(df_clustered_ccf, x = ~class, y = ~pct, type = 'bar')
+
+fig
+```
+
+
+Trying out grouped barcharts
+
+```{r}
+data <- data.frame(df_ccf$class, df_ccf$pct, df_clustered_ccf$pct)
+colnames(data) <- c("class", "pct_original", "pct_clustered")
+
+fig <- plot_ly(data, x = ~class, y = ~pct_original, type = 'bar', name = 'Original DB')
+fig <- fig %>% add_trace(y = ~pct_clustered, name = 'Clustered DB')
+fig <- fig %>% layout(yaxis = list(title = 'Count'), barmode = 'group', xaxis = list(title = "", tickangle = -45))
+
+fig
+```
+
+
+
+Launches a web based view
+```{r}
+library(dash)
+library(dashCoreComponents)
+library(dashHtmlComponents)
+
+app <- Dash$new()
+app$layout(
+    htmlDiv(
+        list(
+            dccGraph(figure=fig) 
+        )
+     )
+)
+
+app$run_server(debug=TRUE, dev_tools_hot_reload=FALSE)
+```
+
+
+
+## DIALACT Extended DB V1
+
+The extended DB contains the DR and the Cas type(s) (among many other things) and is extended with the cluster number and the similarity
+
+After clustering with .8 similarity, the cluster number was added along with the similarity with the reference sequence, in the CRISPRCasFinder database.
+
+```{r}
+library("tidyverse")
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+
+
+casdb_v1_ext <- read.csv("../0_data/DB/CrisprCasFinderDB_dr_1_extended.csv", sep = ';')
+
+tb = as_tibble(casdb_v1_ext)
+
+# Transforms the "1" indicating a reference in 100 (as 100% match). Any of the 100% match can be taken for a reference for the cluster
+tb = tb %>% mutate(is_ref = ifelse(is_ref == 1, 100, is_ref))
+
+
+# Set here the species of interest
+interest = c("Streptococcus thermophilus", "Lactobacillus delbrueckii", "Streptococcus uberis", "Streptomyces albus")
+
+castypes <- unique(tb$class)
+
+# Number of different clusters per species of interest-> nb of different DR 
+
+ct <- tb %>% 
+  count(species, cluster)%>%
+  count(species) %>%
+  filter(
+    species %in% interest
+  )
+ct
+
+
+
+```
+
+
+
+
+
+
+
+#### Number of Cas class representants per species
+Uselessly fancy 3D plot
+```{r}
+# Working !!!
+# Number of cas class 
+x_tb <- tb %>% 
+  group_by(species) %>%
+  filter(species %in% interest) %>%
+  count(class)
+
+plot_ly(x_tb, x=~class, y=~species,z=~n,type = 'scatter3d' , color = ~class, colors = "Accent", mode='markers') %>% 
+  layout()
+
+
+
+
+```
+
+More approachable bar plots which shows how many observation with each cas-type are present for each species of interest.
+
+```{r}
+# Working !!! -> same below with count(species, class) filter (...)
+
+xx_tb <- tb %>% 
+  group_by(species) %>%
+  filter(species %in% interest) %>%
+  count(class) 
+
+plot_ly(xx_tb,
+    x = ~species, 
+    y = ~n, 
+    z = ~class,
+    color= ~class,
+    colors = 'Accent',
+    type = 'bar',
+    legendgroup = "A"
+  )
+
+# SAME !
+casdf = tb %>% 
+  count(species, class) %>%
+  filter(species %in% interest)
+
+
+
+plot_ly(casdf,
+    x = ~species, 
+    y = ~n, 
+    z = ~class,
+    color= ~class,
+    colors = 'Set2',
+    type = 'bar',
+    legendgroup = "A"
+  ) %>% layout(title = 'Cas types found per species')
+
+```
+
+# TODO: 24.11.2020 barchart every line would be a genome and stack the proportion of cas types : ggplot facet_wrap(~species)
+
+
+
+
+
+
+
+
+#### Interaction plot cluster / class / species
+
+*Don't forget you can zoom on the plot by selecting an area. Dezoom by double-clicking.*
+
+Interactive plot of the count of entry per species by clusters (max, min, sum, avg etc...)
+Important: https://plotly.com/r/aggregations/
+
+
+with count -> number of species in the cluster
+with sum -> total number of sequences per cluster
+
+```{r}
+sss_tb <- tb %>%
+  count(cluster, species) 
+print(sss_tb, n = 3786)
+
+library(listviewer)
+s <- schema()
+agg <- s$transforms$aggregate$attributes$aggregations$items$aggregation$func$values
+
+
+l = list()
+for (i in 1:length(agg)) {
+  ll = list(method = "restyle",
+            args = list('transforms[0].aggregations[0].func', agg[i]),
+            label = agg[i]) 
+  l[[i]] = ll
+}
+
+fig <- plot_ly(
+  type = 'scatter',
+  x = sss_tb$cluster,
+  y = sss_tb$n,
+  mode = 'markers',
+  transforms = list(
+    list(
+      type = 'aggregate',
+      groups = sss_tb$cluster,
+      aggregations = list(
+        list(
+          target = 'y', func = 'sum', enabled = T
+        )
+      )
+    )
+  )
+)
+
+fig <- fig %>% layout(
+    title = '<b>Plotly Aggregations</b><br>use dropdown to change aggregation',
+    xaxis = list(title = 'Cluster'),
+    yaxis = list(title = 'Size'),
+    updatemenus = list(
+      list(
+        x = 1.25,
+        y = 1.04,
+        xref = 'paper',
+        yref = 'paper',
+        yanchor = 'top',
+        buttons = l
+      )
+    )
+  )
+
+
+fig
+```
+
+
+Interesting cluster: 684. Only 2 species but a lot of sequences
+
+
+SIMPLER and with order:
+
+```{r}
+c0 <- tb %>% 
+  filter(cluster == 0)
+c0
+
+cct <- tb %>% 
+  group_by(cluster) %>% 
+  summarise(n_distinct(species)) %>% 
+  arrange(`n_distinct(species)`)
+
+plot_ly(data = cct, x=~cluster, y=~cct$`n_distinct(species)`, type = "scatter") %>% 
+  layout(title = "# of distinct species  - unordered", xaxis = xform)
+
+xform <- list(categoryorder = "array",
+              categoryarray = cct$cluster)
+
+plot_ly(data = cct, x= xform, y=~cct$`n_distinct(species)`, type = "scatter") %>% 
+  layout(title = "# of distinct species  - ordered", xaxis = xform)
+
+
+
+# Average number of species per cluster -> average number of species having shared DR 
+mean(cct$`n_distinct(species)`)
+
+
+```
+
+
+Number of different CAS per cluster
+
+```{r}
+ nbcasclust <- tb %>% 
+  group_by(cluster) %>% 
+  summarise(n_distinct(class))
+
+
+plot_ly(data = nbcasclust, x=~cluster, y=~nbcasclust$`n_distinct(class)`, type = "scatter") %>% 
+  layout(title = "# of distinct Cas class  - unordered")
+
+```
+
+
+-----------------------------
+
+Interactive plot: get the number (sum, avg etc) of each CAS class in the database per species
+ - with "count" -> how many different species have this CAS
+ - with "sum" -> how many sequences in total do we have
+ 
+
+No precise idea of what it does and why it's so complicated
+```{r}
+ssss_tb <- tb %>%
+  count(class, species) 
+print(ssss_tb)
+
+library(listviewer)
+s <- schema()
+agg <- s$transforms$aggregate$attributes$aggregations$items$aggregation$func$values
+
+
+l = list()
+for (i in 1:length(agg)) {
+  ll = list(method = "restyle",
+            args = list('transforms[0].aggregations[0].func', agg[i]),
+            label = agg[i]) 
+  l[[i]] = ll
+}
+
+fig <- plot_ly(
+  type = 'scatter',
+  x = ssss_tb$class,
+  y = ssss_tb$n,
+  mode = 'markers',
+  transforms = list(
+    list(
+      type = 'aggregate',
+      groups = ssss_tb$class,
+      aggregations = list(
+        list(
+          target = 'y', func = 'sum', enabled = T
+        )
+      )
+    )
+  )
+)
+
+fig <- fig %>% layout(
+    title = '<b>Plotly Aggregations</b><br>use dropdown to change aggregation',
+    xaxis = list(title = 'Class'),
+    yaxis = list(title = 'Size'),
+    updatemenus = list(
+      list(
+        x = 1.25,
+        y = 1.04,
+        xref = 'paper',
+        yref = 'paper',
+        yanchor = 'top',
+        buttons = l
+      )
+    )
+  )
+
+
+fig
+```
+
+
+
+
+#### Get clusters with unique sequence -> unique DR !
+```{r}
+single = tb %>% 
+  group_by(cluster) %>%
+  filter(n() == 1) %>% 
+  tally()
+
+# List of clusters with only one sequence (DR very different from all others)
+lonelycluster = single$cluster
+
+# Filter the data to take out only the DR that are alone 
+lonelyorga = tb %>% 
+  filter(cluster %in% lonelycluster)
+
+```
+
+
+
+#### Get info from cluster
+
+```{r}
+clusterlst = c(1,2,3,4)
+
+infocluster = tb %>% 
+  filter(cluster %in% clusterlst) %>% 
+  arrange(cluster)
+
+infocluster
+```
+
+
+
+#### How many repeats are associated with a certain class - in how many cluster a class is present
+
+
+```{r}
+# How many sequences do we have for each type (is not very interesting as we have some organism with a lot of sequences)
+rep = tb %>% 
+  count(class)
+
+# How many distinct repeats do we have for each cas class. more interesting to see the diversity for each cas type. 
+unikrep = tb %>% 
+  group_by(class) %>% 
+  summarise(n_distinct(sequence))
+
+unikrepLb = tb %>% 
+  filter(species == "Bacteroides fragilis") %>% 
+  group_by(class) %>% 
+  summarise(nbseq = n_distinct(sequence))
+
+
+```
+
+
+### How many species per cluster
+
+
+```{r}
+library("tidyverse")
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+
+# shows, per cluster, how many of each (present) species there are.
+spcl1 = tb %>% 
+  count(cluster, species)
+spcl1
+
+# Shows for each cluster how many species they contain
+spcl = tb %>% 
+  group_by(cluster) %>% 
+  summarize(nbsp = n_distinct(species))
+spcl
+
+# Verify per cluster or per number of species
+
+spcl %>% 
+  filter(nbsp == 170)
+
+tb %>% 
+  filter(cluster == 587)
+
+
+
+
+# Average number of species per cluster
+avg_nbsp = mean(spcl$nbsp)
+
+max_nbsp = max(spcl$nbsp)
+
+
+
+
+```
+
+We can see that the cluster 587 has the highest number of species with 170. A blast of the sequence shows match with Arabidopsis thaliana (approx 50% coverage and 100% match)-> nonsense
+
+#### Histogram
+
+
+// this one is bad
+```{r}
+# DOES NOT SHOW THE ONES WITH 1 IND.
+
+library(hrbrthemes)
+p <- ggplot(spcl, aes(x=nbsp)) +
+  geom_histogram(binwidth=1, fill="#69b3a2", color="#e9ecef", alpha=0.9) + 
+  scale_y_log10(breaks=c(0, 1, 5, 10, 50, 100, 200, 500, 1000)) +
+  ggtitle("Number of species per cluster") +
+  theme_bw()
+
+p
+```
+
+
+// Good one with plot_ly
+
+```{r}
+fig <- plot_ly(
+  type="histogram",
+  x=~spcl$nbsp,
+  bingroup=0
+)
+
+fig <- layout(fig, 
+              yaxis = list(type = "log", title = "Count"), 
+              xaxis = list(title = "# of species per cluster"))
+
+fig
+```
+
+
+
+
+
+
+# Dialact DR, spacers and Flank. Seq. Database v1
+
+V1 - CRISPRCasFinder partially working / no CAS detection
+
+From the assemblies, extracted the DR and merge them in a single report per Organism (Lb_delbruekii and Strep_thermophilus)
+
+
+```{r}
+library("tidyverse")
+library(readr)
+
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+# https://community.rstudio.com/t/is-there-a-tidy-way-to-iterate-a-data-frame-tibble-and-produce-side-effects-based-on-the-value-of-each-row/52382/4
+library(slider)
+
+
+# ATTENTION: Shitty format -> check the usv file with a per-spacer form. So, no need to parse the table of spacers.
+#dialact_noCAS_Lb <- read.csv("../2_crisprCasFinder/Parsed_Output/Lb_delbruekii/Lb_delbruekii_CRISPR_v1.csv", sep = ';')
+
+#Lb_dia = as_tibble(dialact_noCAS_Lb)
+
+#Lb_dia %>% 
+#  summarise_all(class) %>% 
+#  gather(col_name, col_type)
+
+
+
+```
+
+
+
+
+Read the USV file containing every spacers. Contains the cluster (80% identity) done with cd-hit-est. The relative distance of each spacer from the leader sequence is set bellow in the v2. 
+
+*Read Lb_delbruekii*
+```{r}
+
+Lb_delbruekii_PerSpacer_CRISPR_v1 <- read_delim("C:/Users/thsch/Desktop/master_thesis/2_crisprCasFinder/Parsed_Output/Lb_delbruekii/Lb_delbruekii_PerSpacer_CRISPR_v1.csv", 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE)
+
+View(Lb_delbruekii_PerSpacer_CRISPR_v1)
+
+```
+
+
+*Read Streptococcus_thermophilus*
+```{r}
+Streptococcus_thermophilus_PerSpacer_CRISPR_v1 <- read_delim("C:/Users/thsch/Desktop/master_thesis/2_crisprCasFinder/Parsed_Output/Streptococcus_thermophilus/Streptococcus_thermophilus_PerSpacer_CRISPR_v1.csv", 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE)
+
+View(Streptococcus_thermophilus_PerSpacer_CRISPR_v1)
+```
+
+
+
+*Read Leuconostoc_mesenteroides*
+```{r}
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1 <- read_delim("C:/Users/thsch/Desktop/master_thesis/2_crisprCasFinder/Parsed_Output/Leuconostoc_mesenteroides/Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1.csv", 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE)
+
+View(Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1)
+```
+
+
+
+## V2: add distance from leader spacer
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Here bellow we add the relative distance from the leader spacer. Depending on the orientation (if available). 
+A distance of 0 means that the spacer is the last inserted (close to the leader). A distance of 1 means that 
+it is the most further away from the leader sequence. This addon is saved in the version 2 of the dataset. 
+
+
+*Lb_delbruekii: Add spacers' relative distance from leader*
+```{r}
+Lb_delbruekii_PerSpacer_CRISPR_v2 <- Lb_delbruekii_PerSpacer_CRISPR_v1 %>% 
+  filter(EvidenceLvl > 3) %>% 
+  add_count(ArrayID, name = "NbSpacerInArray") %>% 
+  mutate(rel_dist_leader = ifelse(Orientation == "+", SpacerNb/(NbSpacerInArray-1), -1 * (SpacerNb - NbSpacerInArray + 1) / (NbSpacerInArray-1))) %>%
+  mutate(rel_dist_leader = ifelse(Orientation == "ND", NA, rel_dist_leader)) 
+
+View(Lb_delbruekii_PerSpacer_CRISPR_v2)
+  
+```
+
+
+
+
+
+
+
+
+
+
+*Streptococcus_thermophilus: Add spacers' relative distance from leader*
+```{r}
+Streptococcus_thermophilus_PerSpacer_CRISPR_v2 <- Streptococcus_thermophilus_PerSpacer_CRISPR_v1 %>% 
+  filter(EvidenceLvl > 3) %>% 
+  add_count(ArrayID, name = "NbSpacerInArray") %>% 
+  mutate(rel_dist_leader = ifelse(Orientation == "+", SpacerNb/(NbSpacerInArray-1), -1 * (SpacerNb - NbSpacerInArray + 1) / (NbSpacerInArray-1))) %>%
+  mutate(rel_dist_leader = ifelse(Orientation == "ND", NA, rel_dist_leader)) 
+
+View(Streptococcus_thermophilus_PerSpacer_CRISPR_v2)
+  
+```
+
+
+
+
+
+
+
+
+*Leuconostoc_mesenteroides: Add spacers' relative distance from leader*
+```{r}
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2 <- Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1 %>% 
+  filter(EvidenceLvl > 3) %>% 
+  add_count(ArrayID, name = "NbSpacerInArray") %>% 
+  mutate(rel_dist_leader = ifelse(Orientation == "+", SpacerNb/(NbSpacerInArray-1), -1 * (SpacerNb - NbSpacerInArray + 1) / (NbSpacerInArray-1))) %>%
+  mutate(rel_dist_leader = ifelse(Orientation == "ND", NA, rel_dist_leader)) 
+
+View(Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2)
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Number of spacer per cluster (shows that some sequences are really common )
+
+```{r}
+# Note: Spacers with Evidence level < 4 have already been removed
+# NA: sequences with non-defined orientation / distance are removed prior to averaging
+
+
+Lb_dist <- Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  group_by(cluster) %>% 
+  summarise(min = min(rel_dist_leader), mean = mean(rel_dist_leader), max = max(rel_dist_leader), NbSpacers = n()) %>% 
+  count(NbSpacers)
+
+Lb_dist
+
+upper=max(Lb_dist$NbSpacers)
+lower=1
+x <- c(lower:upper)
+
+compl <- Lb_dist %>% 
+  complete(NbSpacers = lower:upper, fill = list(n = 0)) %>% 
+  ggplot(aes(x = NbSpacers, y = n)) + 
+  geom_bar(stat='identity', fill=rgb(0.1,0.4,0.5,0.7)) +
+  ggtitle("Cluster size") +
+  xlab("Cluster size / Number of spacers in the cluster") +
+  ylab("Number of cluster with n spacers") + 
+  theme( axis.line = element_line(colour = "darkblue", size = .5, linetype = "solid"))
+compl
+
+
+asdf <- Lb_dist %>%
+  complete(NbSpacers = lower:upper, fill = list(n = 0))  %>% 
+  mutate(mycolor = ifelse(n==0, "magenta", "cyan"))
+
+compl2 <- asdf %>% 
+  ggplot(aes(x = NbSpacers, y = n)) +
+    geom_segment( aes(x=NbSpacers, xend=x, y=0, yend=n), color="grey") +
+    geom_point(shape=25, color=asdf$mycolor, size=2, fill=asdf$mycolor) +
+    theme_light() +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.border = element_blank(),
+      axis.ticks.x = element_blank()
+    ) +
+  ggtitle("Cluster size") +
+  xlab("Cluster size / Number of spacers in the cluster") +
+  ylab("Number of cluster with n spacers")
+compl2
+
+```
+
+##TODO average rel_dist per cluster (or dist difference..)
+
+
+in the clusters, are the sequences all "recent" or "old" ? Depends on the array's size. 
+
+## TODO: include crispr array's size !! Mark of age, if small, the spacer with distance 1 will not be as old than the spacer with distance 1 of a 50 spacers array. 
+
+### Distances within clusters
+```{r}
+
+# Are the spacers in the clusters usually at the same position in the array ? e.g. are all spacers of cluster 33 old or recent ones ?
+
+avgdst <- Lb_delbruekii_PerSpacer_CRISPR_v2  %>% 
+  filter(!is.na(rel_dist_leader)) %>%
+  group_by(cluster) %>% 
+  summarise(min_dst = min(rel_dist_leader), max_dst = max(rel_dist_leader), median = median(rel_dist_leader), sd = sd(rel_dist_leader), n())
+
+avgdst
+
+# The NA are due to the fact that the cluster contains only one spacer (thus the sd cannot be computed). Also, to have a meaningful result we should separate the data in 2 -> the recent arrays (small ones -> threshold ?) and the older arrays containing more than a few spacers. Check the array size bellow.  
+
+
+
+```
+ 
+Reading this paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5749868/pdf/pcbi.1005891.pdf 
+We learn that the best CRISPR array size is at around 4-5 spacers. 
+
+## TODO: plot the distances (SD?) to see how the distances vary inside clusters (do they tend to be all the same ? -> low SD)
+
+```{r}
+# Standard deviation of the relative distances to the leader inside clusters (for similar spacers). 
+# TODO
+
+
+
+
+
+
+
+```
+
+
+
+### Duplicated spacers
+Are spacers present more than once in the arrays? If yes are they close / far from eachother ?
+
+```{r}
+Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  group_by(ArrayID) %>% 
+  add_tally(n_distinct(cluster), name = "Nb_unique_cluster") 
+
+# IDEA: number of different cluster per array
+# IDEA: are there sequences more than once in an array ?
+# for all the first positions: how many clusters ?
+# for all the last positions: how many clusters ? 
+# sequences more than once in an array: meaning ? Position ? GC/AT content ? Blast ?
+# The question: are the identical spacers (clustered) all at the same position in the arrays ?
+
+
+# Array | sequence | number of time the sequence appears in the array
+Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  group_by(ArrayID) %>% 
+  add_tally(n_distinct(SpacerSeq), name = "Nb_unique_seq") %>% 
+  ungroup(ArrayID) %>% 
+  count(ArrayID, SpacerSeq) %>% 
+  filter(n > 1)
+
+
+# Informations about the position of the sequences appearing more than once in an array (result: they DO NOT always follow each other) 
+Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  group_by(ArrayID) %>% 
+  add_tally(n_distinct(SpacerSeq), name = "Nb_unique_seq") %>% 
+  ungroup(ArrayID) %>% 
+  count(ArrayID, SpacerSeq) %>% 
+  filter(n > 1) %>% 
+  left_join(Lb_delbruekii_PerSpacer_CRISPR_v2, by = c("SpacerSeq", "ArrayID")) %>% 
+  select(ArrayID, SpacerSeq, SpacerNb, rel_dist_leader)
+
+
+# Now get the difference in position and the difference of distance. Are the duplicated spacers next to eachother? (position in the array)
+# And what the difference in relative distance?
+
+Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  count(ArrayID, SpacerSeq) %>% 
+  filter(n > 1) %>% 
+  left_join(Lb_delbruekii_PerSpacer_CRISPR_v2, by = c("SpacerSeq", "ArrayID")) %>% 
+  select(ArrayID, SpacerSeq, SpacerNb, rel_dist_leader, NbSpacerInArray) %>% 
+  group_by(ArrayID, SpacerSeq) %>%
+  summarise(DistBetweenSpacers = abs(diff(SpacerNb)), RelDistDiff = abs(diff(rel_dist_leader)), mean(NbSpacerInArray), duplicates = n()) 
+  
+
+
+# ---/---
+Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  group_by(ArrayID) %>% 
+  summarise(n_dis_seq = n_distinct(SpacerSeq), nspacer = n())
+
+```
+
+
+
+## CRISPR array size
+
+For an organism, we get all the CRISPR arrays sizes and plot them. We can se for Lb_delbruekii a bimodal distribution with an extreme case of 3 arrays with 103 spacers. 
+
+```{r}
+library(ggthemr)
+ggthemr("sky")
+maxx <- max(Lb_delbruekii_PerSpacer_CRISPR_v2$NbSpacerInArray)
+minx <- min(Lb_delbruekii_PerSpacer_CRISPR_v2$NbSpacerInArray)
+
+
+
+plt <- Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(EvidenceLvl > 3) %>% 
+  count(ArrayID) %>% 
+  count(n) %>% 
+  complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  replace_na(list(nn = 0))
+
+maxy <- max(plt$nn)
+miny <- min(plt$nn)
+
+plt <- ggplot(plt, aes(x=n, y=nn)) +
+  geom_bar(stat='identity', fill=rgb(0.1,0.4,0.5,0.7)) +
+  ggtitle("Array size") +
+  xlab("Number of spacer in an array") +
+  ylab("Number of array with n spacers") + 
+  scale_x_continuous(breaks = seq(0, maxx, 2)) + 
+  scale_y_continuous(breaks = seq(0, maxy, 1)) +
+  theme(axis.line = element_line(colour = "darkblue", size = .5, linetype = "solid"), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+plt
+
+
+
+
+Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(EvidenceLvl > 3) %>% 
+  count(ArrayID) %>% 
+  count(n) %>% 
+  complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  replace_na(list(nn = 0)) %>% 
+  plot_ly(x = ~n,
+    y = ~nn,
+    type = "bar"
+    )%>% layout(
+    title = "Number of spacers per array",
+    xaxis = list(
+      title = "Number of spacer in an array",
+      dtick = 2, 
+      tick0 = 0, 
+      tickmode = "linear"),
+    yaxis = list(
+      title = "Number of array with n spacers")
+    )
+
+
+# TODO: stack-color the bars acording to the DR cluster nb
+# TODO: color the bars according to the cas-type (class) of each array. 
+
+
+
+```
+
+### CRISPR array size DR cluster
+
+```{r}
+# color by clustered DR. 
+# There are approximately 15 DR clusters for Lb_delbruekii but only 3 different for the arrays with evidence level >3
+
+# as the v2 contains the biggest array (with good evidence level, it's ok to take the v2-max for the completion)
+maxx <- max(Lb_delbruekii_PerSpacer_CRISPR_v2$NbSpacerInArray)
+minx <- min(Lb_delbruekii_PerSpacer_CRISPR_v2$NbSpacerInArray)
+
+
+# Without filtering the array with Evidence level < 3:
+
+d <- Lb_delbruekii_PerSpacer_CRISPR_v1 %>% 
+  mutate(DR_cluster = as_factor(DR_cluster)) %>% 
+  count(DR_cluster, ArrayID) %>% 
+  count(DR_cluster, n) %>% 
+  complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  replace_na(list(nn = 0))
+
+fig <- plot_ly(d, x = ~n, y = ~nn, type = 'bar', color = ~DR_cluster, colors = "Set1")
+fig <- fig %>% layout(yaxis = list(title = 'Count'), barmode = 'stack')
+fig
+
+# By taking all arrays, including small ones with low evidence level:
+
+
+
+d2 <- Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  mutate(DR_cluster = as_factor(DR_cluster)) %>% 
+  count(DR_cluster, ArrayID) %>% 
+  count(DR_cluster, n) %>% 
+  complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  replace_na(list(nn = 0))
+
+fig2 <- plot_ly(d2, x = ~n, y = ~nn, type = 'bar', color = ~DR_cluster, colors = "Set1")
+fig2 <- fig2 %>% layout(title = "Number of array with n spacers / clustered by Direct Repeats", yaxis = list(title = 'Count'),  barmode = 'stack')
+fig2
+
+```
+TODO: idée -> faire un cluster de tous les DR de toutes les strains. 
+
+
+
+
+### Smoothing splines test
+
+Testing interpolation. Could give nice features (modes for instance). 
+
+```{r}
+
+# Number of arrays with nn spacers.
+
+nbspacer <- Lb_delbruekii_PerSpacer_CRISPR_v2 %>% 
+  filter(EvidenceLvl > 3) %>% 
+  count(ArrayID) %>% 
+  count(n) %>% 
+  complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  replace_na(list(nn = 0)) %>% 
+  mutate(
+    #nb_interpolated = spline(x=n, y=nn, xout=nn)$y
+    nb_interpolated = predict(loess(nn ~ n, span = .35))
+         )
+
+plt <- ggplot(nbspacer, aes(x=n, y=nb_interpolated)) +
+  geom_line() +
+  geom_line(aes(y=nn), size=1, alpha=.3, na.rm=T)
+
+
+ggthemr("light", type="outer", layout="scientific", spacing=2) 
+# plot your existing figure with the new theme
+plt
+# to remove all ggthemr effects later:
+#ggthemr_reset()
+
+```
+
+
+
+## Cas Proteins
+
+```{r}
+Lb_delbruekii_Cas_Genes_v1 <- read_delim("C:/Users/thsch/Desktop/master_thesis/2_crisprCasFinder/Parsed_Output/Lb_delbruekii/Lb_delbruekii_Cas_genes_v1.usv", 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE)
+
+View(Lb_delbruekii_Cas_Genes_v1)
+
+```
+
+
+
+
+```{r}
+Lb_delbruekii_Cas_Type_v1 <- read_delim("C:/Users/thsch/Desktop/master_thesis/2_crisprCasFinder/Parsed_Output/Lb_delbruekii/Lb_delbruekii_CasType_v1.usv", 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE)
+
+View(Lb_delbruekii_Cas_Type_v1)
+```
+
+
+
+# TODO: Cas plot data etc
+
+
+
+
+#___________________
+
+
+
+# Reticulate test
+
+
+
+
+
+```{r}
+#loading required R libraries 
+library(reticulate) #the superpower bridges python and R
+
+
+#path_to_python = "C:/Users/thsch/Anaconda3/python.exe"
+Sys.setenv(RETICULATE_PYTHON = "C:/Users/thsch/Anaconda3/python.exe")
+use_python("C:/Users/thsch/Anaconda3/python.exe", required = TRUE)
+
+#py_discover_config()
+py_config()
+#py_available()
+conda_list()
+virtualenv_list()
+
+virtualenv_create("test_reticulate")
+
+
+use_virtualenv("test_reticulate")
+
+py_install("seaborn", envname = "test_reticulate")
+
+```
+
+```{python}
+import seaborn as sns
+
+fmri = sns.load_dataset("fmri")
+
+```
+
+```{r}
+f1 = subset(py$fmri, region == "parietal")
+```
+
+
+```{python}
+import matplotlib as mpl
+sns.lmplot("timepoint", "signal", data=r.f1)
+
+mpl.pyplot.show()
+
+```
+
+
+
+
+_____________________
+
+# CRISPRdisco
+
+As CRISPRCasFinder is not fully functional, we'll use CRISPRdisco instead. *BUT* CRISPRdisco doesn't seem to give the spacers. (coordinate the naming with CRISPRCasFinder to name the data the same to compare/merge)
+
+To run CRISPRdisco (from a compute node or a slurm script):
+
+```{bash}
+singularity exec docker://crisprlab/crisprdisco disco test_infile.csv
+```
+
+This is the test file given in the Git repository. Result files:
+
+```{bash}
+CRISPR-Cas_Subtype_summary.csv
+CRISPR-Cas_Type_summary.csv
+CRISPR_repeat_seqs_2020-09-22.csv
+Genomes_without_CRISPR_2020-09-22.csv
+Master_CRISPR_summary_table_2020-09-22.csv
+repeat_summary_table_2020-09-22.csv
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------
+
+# CRASS
+
+From: https://ctskennerton.github.io/crass/ 
+
+
+
+
+## Metagenome fetcher
+
+To gather the data, it is just necessary to enter the Bioproject number (https://www.ncbi.nlm.nih.gov/bioproject/)
+
+*1_metagenome_fetcher.sh*
+```{bash}
+#!/bin/bash
+
+#SBATCH -o output/metafetch-output.txt
+#SBATCH -e output/metafetch-error.txt
+
+#SBATCH --job-name=â€DataFetchâ€
+#SBATCH --nodes=10
+#SBATCH --cpus-per-task=4
+#SBATCH --time=24:00:00
+#SBATCH --mem=20G
+#SBATCH --partition=pall
+
+
+module add vital-it/7
+module load UHTS/Analysis/crass/1.0.1;
+
+
+# SRA Handbook - download bulk data using Aspera
+# https://www.ncbi.nlm.nih.gov/books/NBK242621/
+
+
+module add Utility/aspera_connect/3.7.4.147727;
+
+# Entrez Direct allows to search for project and receiving list of SRA entries. 
+module add Blast/edirect/2020.08.17
+
+#TODO sratookkit used for fast-dump and many other - parallelize directly in fastq-dump with options
+
+module load UHTS/Analysis/sratoolkit/2.10.7;
+
+
+#---------------------------------------------------------------
+#                   Download and dump data
+#---------------------------------------------------------------
+
+
+#===================================
+# Test:    Fermentation Metagenome
+#===================================
+
+# Entry lists and download directory
+
+# 1) Fermentation metagenome: https://www.ncbi.nlm.nih.gov/Traces/study/?query_key=8&WebEnv=MCID_5f44bc196e59ff6e1d103c74&o=acc_s%3Aa
+#                             https://www.ncbi.nlm.nih.gov/bioproject/PRJEB15432
+
+#BIOPROJECT=PRJEB15432
+# Manual SRR entry list
+#PRJEB15432=(ERR1638198 ERR1638214 ERR1653129 ERR1653130 ERR1653131 ERR1653132 ERR1653133 ERR1653134 ERR1653135 ERR1653136 ERR1653137 ERR1653138 ERR1653139 ERR1653140 ERR1653141 ERR1653142 ERR1653143 ERR1653144 ERR1653145 ERR1653146)
+
+
+
+#===================================================================================================================
+
+BIOPROJECT=$1
+
+#===================================
+#  Geting SRA entries with Entrez
+#===================================
+
+echo "----------------------------------------------------------"
+echo "  Getting SRA IDs list from BioProject accession number"
+echo "----------------------------------------------------------"
+
+
+echo "Importing data for project $BIOPROJECT"
+echo "..."
+
+# TODO: bypass the SRA download part if a list of SRR entries is give
+
+# Import the list of SRA identifiers of the Bioproject
+esearch -db sra -query $BIOPROJECT | efetch --format runinfo |cut -d "," -f 1 > SRR.numbers
+
+# Remove first and trailer lines ("Run" and "")
+sed -i '1d' SRR.numbers
+sed -i '$d' SRR.numbers
+
+# Read the file into an array
+mapfile -t SRR_array < SRR.numbers
+
+echo "List of SRR entries: "
+echo "${SRR_array[@]}"
+
+# Test if array is empty
+if [[ ${#SRR_array[@]} -eq 0 ]];then
+	echo "Array length  ${#SRR_array[@]}"
+	echo "WARNING - Array is empty - no data to download"
+	#TODO Quitting script
+	exit 1
+fi
+
+
+mkdir -p /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT
+
+RESULTD=/data/projects/p539_crisprscope/crass_scripts/results/$BIOPROJECT
+mkdir -p $RESULTD
+
+echo "Start loop through ${SRR_array[@]}"
+
+# Check if entry is already downloaded:
+#	Note: prefetch already checks if the entry is already downloaded but slowlier
+
+# For every SRA entry check if already present and download
+
+# Manual SRR entry list
+#for e in ${PRJEB15432[@]}
+
+echo"----------------------------------------------------------"
+echo"                 Downloading SRA enries"
+echo"----------------------------------------------------------"
+
+
+for e in  ${SRR_array[@]}
+do
+	echo "-------------------"
+	echo "ERR entry $e"
+	echo "-------------------"
+	
+	
+	if [[ -d /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/$e/ ]]; then
+		echo "File $e has already been downloaded. Skipping. "
+		continue
+	else 
+		# Prefetch automatically check if the folder has been downloaded
+        	# option -transport ascp temporarily disabled
+		echo "Fetching entry $e ...."
+	        prefetch -O /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT $e	
+	fi
+	
+
+	# Create the result directory for crass
+	#TODO: result directory for each SRA ID is empty !!
+	mkdir -p $RESULTD/$e
+	
+done
+
+
+
+# For all downloaded file, do fastq-dump ERR752919.1
+# fastq-dump can also be done directly with the accession number: https://ncbi.github.io/sra-tools/fastq-dump.html
+# Check https://edwards.sdsu.edu/research/fastq-dump/ for good details
+# Option --gzip to compress
+
+echo "----------------------------------------------------------"
+echo "                FASTQ-DUMP  / SRA tools"
+echo "----------------------------------------------------------"
+
+
+for e in $(ls /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/)
+do
+	# TODO - if fasta file already exists -> skip
+	if [[ -f "/data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/$e/$e.fastq.gz" ]]; then
+		echo "File /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/$e/$e.fastq.gz already exist"
+		continue
+	else
+		echo "----------------"
+        	echo "Dumping entry $e"
+        	echo "----------------"
+###        	#fastq-dump --gzip --outdir /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/$e /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/$e/$e.sra
+		# $1 -> $BIOPROJECT
+		# $2 -> $e
+	        # TODO: PARALLELIZE -> echo in script and srun/sbatch it
+		srun -N 1 -p pshort ./subscript_1_sra_dump.sh $BIOPROJECT $e
+###		sbatch ./sra_dump.sh $BIOPROJECT $e
+	fi
+	
+done
+
+#--------------------------------------------------------
+#                    DONE !
+#--------------------------------------------------------
+
+
+
+# Done in another script
+#crass -o results/ ERR752919.1.fastq 
+
+
+
+echo "Importation and fastq-dump done for $BIOPROJECT..."
+echo "END"
+
+
+
+```
+
+*subscript_1_sra_dump.sh*
+```{bash}
+#!/bin/bash
+
+
+BIOPROJECT=$1
+e=$2
+
+
+fastq-dump --gzip --outdir /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/$e /data/projects/p539_crisprscope/data/metagenomes/$BIOPROJECT/$e/$e.sra
+
+
+
+```
+
+## CRASS run/merge
+Then, Crass is executed and the result .crispr files for each SRR entry are merged into one unique .crispr file for the bioproject. 
+
+*2_crass_run_merge.sh*
+```{bash}
+#!/bin/bash
+
+#SBATCH -o output/out-crass.txt
+#SBATCH -e output/err-crass.txt
+
+#SBATCH --job-name=â€CrassAnalysisâ€
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=24:00:00
+#SBATCH --mem=20G
+#SBATCH --partition=pall
+
+#=========================================================================================
+#
+#   Executes CRASS on the downloaded metagenome (by Bioproject number)
+#   Merges the result files into one .crispr file per bioproject
+#
+#
+#=========================================================================================
+
+
+module add vital-it/7
+module load UHTS/Analysis/crass/1.0.1;
+
+
+# SRA Handbook - download bulk data using Aspera
+# https://www.ncbi.nlm.nih.gov/books/NBK242621/
+
+
+### module add Utility/aspera_connect/3.7.4.147727;
+
+# sratookkit used for fast-dump and many other
+
+module load UHTS/Analysis/sratoolkit/2.10.7;
+
+
+
+###crass -o results/ ERR752919.1.fastq 
+
+
+# Directory containing the BioProjects folders
+DATA=/data/projects/p539_crisprscope/data/metagenomes/
+RES=/data/projects/p539_crisprscope/crass_scripts/results/
+
+BIOPROJECT=$1
+
+
+
+# Check if Data exist
+if [[ -d "$DATA/$BIOPROJECT" ]]; then
+	echo "Data available... continuing"
+else
+	echo "Data not found... quitting."
+	exit 0
+fi
+
+
+DATA_PRJ=$(ls $DATA/$BIOPROJECT)
+
+# arr = list of sequence names
+echo "tbl"
+echo $DATA_PRJ
+read -a arr <<< $DATA_PRJ
+
+
+
+###shopt -s nullglob
+###array=($DATA$BIOPROJECT/*/)
+###shopt -u nullglob # Turn off nullglob to make sure it doesn't interfere with anything later
+###echo "${array[@]}"  # Note double-quotes to avoid extra parsing of funny characters in filenames
+
+
+
+if (( ${#arr[@]} == 0 )); then
+    echo "No sequence folder found" >&2
+fi
+
+
+###test=(ls -d -- $DATA$BIOPROJECT/*/)
+
+# For all the file of the BioProject data, execute crass and save the results (merge .crispr files later)
+for f in ${arr[@]} 
+do
+	FILE=$DATA$BIOPROJECT/$f/$f.fastq.gz
+	OUT=$RES$BIOPROJECT/$f
+	mkdir -p $OUT
+	echo "Output directory: $OUT"
+	echo "Input file: $FILE"
+	if [[ -f "$FILE" ]]; then
+		echo "File exists"
+	else
+		echo "File $FILE not found"
+	fi
+	
+	# If CRASS has already been executed, skip.
+	if [[ -f "$OUT/crass.crispr" ]]; then
+		echo "[WARNING] file already exists.. skipping."
+		continue
+	else
+		echo "Start CRASS for $f"
+		crass -o $OUT $FILE
+		echo "CRASS done for $f"
+	fi
+done
+
+
+# TODO: merge all crass.crispr files 
+
+crispr_lst=$(find $RES$BIOPROJECT -name 'crass.crispr')
+
+#===========================================================
+#  MERGING
+#===========================================================
+
+
+crisprtools merge -s -o $RES$BIOPROJECT/crisprtools_merged.crispr $crispr_lst
+
+
+
+
+
+echo Crass run and summary files merged for Bioproject $BIOPROJECT
+
+
+
+
+
+```
+
+## CrisprTools data extraction
+Then different data/files are extracted from the .crispr file, like the DR, Spacers and Flanking seq. and other statistics. 
+
+*3_crass_results_stuff.sh*
+```{bash}
+#!/bin/bash
+
+#SBATCH -o output/3out-crassstuff.txt
+#SBATCH -e output/3err-crassstuff.txt
+
+#SBATCH --job-name=â€DataCrassâ€
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=24:00:00
+#SBATCH --mem=20G
+#SBATCH --partition=pall
+
+
+#=========================================================================================
+# Extract various features with CrisprTools
+# 
+# - stats
+# - fasta files (DR, spacers and flanking sequences)
+#
+#=========================================================================================
+
+module add vital-it/7
+module load UHTS/Analysis/crass/1.0.1;
+module load UHTS/Analysis/sratoolkit/2.10.7;
+
+
+
+# Directory containing the BioProjects folders
+DATA=/data/projects/p539_crisprscope/data/metagenomes/
+DB=/data/projects/p539_crisprscope/0_data/DB/CrisprCasFinderDB_dr.csv
+RES=/data/projects/p539_crisprscope/2_crass_scripts/results/
+
+BIOPROJECT=PRJEB6952
+
+
+#=======================================================
+#    Get statistics out of the merged .crispr file
+#=======================================================
+
+echo "$RES$BIOPROJECT/crisprtools_merged.crispr"
+
+crisprtools stat -H $RES$BIOPROJECT/crisprtools_merged.crispr > $RES$BIOPROJECT/$BIOPROJECT.stats.csv
+
+#=======================================================
+#    Get Direct Repeats out of the merged .crispr file
+#=======================================================
+
+crisprtools extract -d $RES$BIOPROJECT/crisprtools_merged.crispr > $RES$BIOPROJECT/$BIOPROJECT.DR.fasta
+
+
+#=======================================================
+#       Get spacers out of the merged .crispr file
+#=======================================================
+
+crisprtools extract -s $RES$BIOPROJECT/crisprtools_merged.crispr > $RES$BIOPROJECT/$BIOPROJECT.Spacers.fasta
+
+
+#=======================================================
+#    Get flank. seq. out of the merged .crispr file
+#=======================================================
+
+
+crisprtools extract -f $RES$BIOPROJECT/crisprtools_merged.crispr > $RES$BIOPROJECT/$BIOPROJECT.FlankingSequences.fasta
+
+
+
+
+```
+
+
+--------------------------------
+
+
+## Pairwise CRISPR spacers
+#TODO 
+redo the alignment with various species spacer samples
+
+```{r}
+library(readr)
+library(ggplot2)
+
+alignmentfile <- "../0_data/needleman/final_pairwise_alignment.txt"
+
+spacer_pairs <- read_delim(alignmentfile,  "\t", escape_double = FALSE, col_names = c("spacer1","spacer2","length","matching","gaps","score"),trim_ws = TRUE)
+
+spacer_pairs$id <- 100*(spacer_pairs$matching/spacer_pairs$length)
+
+
+
+##----------subset
+#100*(sum(spacer_pairs$id>90)/nrow(spacer_pairs))
+
+
+##----------histogramm
+
+hist(spacer_pairs$id)
+
+spacer_pairs_similiar <- spacer_pairs[(spacer_pairs$id>80),]
+hist(spacer_pairs_similiar$id)
+
+
+
+
+```
+
+
+
+```{r}
+
+##creat ANI matrix 
+count <- 2
+spacer_pairs$combined <- paste(spacer_pairs$spacer1,spacer_pairs$spacer2,sep="_")
+sterm_curated <- spacer_pairs[1,]
+
+for (i in 1:length(names)) {
+   rowName <- names[i]
+    print(rowName)
+  for(a in count:length(names)){
+    
+    colNames <- names[a]
+    print(colNames)
+ 
+      temp <- spacer_pairs[spacer_pairs$spacer1==rowName &spacer_pairs$spacer2==colNames,]
+        
+   
+    sterm_curated <- rbind(sterm_curated,temp)
+    
+    
+  }
+        
+count <- count +1 
+  
+}
+sterm_curated <- sterm_curated[-1,]
+sterm_curated <- sterm_curated[which(!is.na(sterm_curated$id>80)),]
+
+densityPlot <- ggplot(sterm_curated,aes(x=id))+geom_histogram(binwidth = 3)+theme_classic()+
+  labs(x="pairwise spacer identity [%]")
+
+100*(sum(sterm_curated$id>80)/nrow(sterm_curated))
+100*(15/nrow(sterm_curated))
+
+svg("~/Desktop/Projects/2019_RMK202_analysis/04_CRISPR_spacer/Streptococcus_thermophilus_SPACERS_histo.svg",width=5,height=3)
+
+densityPlot
+          
+ dev.off()
+ 
+ ##---------------export the shared spacers
+ 
+sharedspacers <- sterm_curated[which(sterm_curated$id>80),]
+
+unique_spacers <- unique(c(sharedspacers$spacer1,sharedspacers$spacer2))
+
+write.table(unique_spacers, "~/Desktop/Projects/2019_RMK202_analysis/04_CRISPR_spacer/unique_Sterm_spacers.txt",na = "", quote = FALSE, sep = "\t",row.names = FALSE, col.names = FALSE)
+```
+
+
+
+
+
+
+
+
+
+

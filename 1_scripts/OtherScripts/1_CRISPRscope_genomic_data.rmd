@@ -1,0 +1,1676 @@
+---
+title: "1_CRISPRscope_genomic_data"
+author: "Thibault Schowing"
+date: "20/01/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Packages and global variables
+
+```{r}
+library(tidyverse)
+library(readr)
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+# https://community.rstudio.com/t/is-there-a-tidy-way-to-iterate-a-data-frame-tibble-and-produce-side-effects-based-on-the-value-of-each-row/52382/4
+library(slider)
+
+
+
+# For melt() in custom heatmap
+#install.packages("reshape")
+library(reshape)
+
+#åif (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("Biostrings")
+
+library(Biostrings)
+
+
+# Converts dataframe to fasta file
+#install.packages("seqRFLP")
+library("seqRFLP")
+
+
+# for pseudo_log_trans(sigma = 1, base = exp(1))
+library(scales)
+
+
+library(gridExtra)
+library(cowplot)
+library(egg)
+
+```
+# CRISPRscope genomic data parsing
+
+This markdown reads, parses and merges data from CRISPRCasFinder, locally transfered after processing on the linux cluster. 
+
+
+## Data handling Functions definition
+
+
+```{r}
+# Base location
+data_folder <- "C:/Users/thsch/Desktop/master_thesis_2/2_crisprCasFinder/Parsed_Output"
+```
+
+### Read spacer csv
+
+
+
+```{r}
+#
+# Read the organism data (Spacers info)
+# Input: species name and source (NCBI or DIALACT Databases)
+#
+#Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+read_spacers_data <- function(species, source = "DIALACT") {
+  if (source == "DIALACT") {
+    t <-
+      read_delim(
+        paste(
+          data_folder,
+          "/",
+          species ,
+          "/",
+          source,
+          "/",
+          species,
+          "_PerSpacer_CRISPR_v1.csv",
+          sep = ""
+        ),
+        ";",
+        escape_double = FALSE,
+        col_names = T,
+        trim_ws = TRUE
+      ) %>%
+      mutate(tmp = ArrayID) %>%
+      separate(tmp, c("Strain", "Scaffold", "Array"), sep = "_") %>%
+      relocate(Strain, .before = "ShortID") %>%
+      relocate(Scaffold, .before = "ShortID") %>%
+      relocate(Array, .before = "ShortID") %>%
+      relocate(ArrayID, .before = "ShortID") 
+      #filter(grepl("^FAM", Strain))
+  }
+  
+  if (source == "NCBI") {
+    t <-
+      read_delim(
+        paste( data_folder, "/", species ,  "/", source, "/", species,"_PerSpacer_CRISPR_v1.csv",sep = ""),  
+        ";",
+        escape_double = FALSE,
+        col_names = T,
+        trim_ws = TRUE
+      ) %>%
+      mutate(tmp = ArrayID) %>%
+      separate(tmp, c("Strain", "Scaffold1", "Scaffold2", "Array"), sep = "_") %>%
+      unite(Scaffold,
+            c("Scaffold1", "Scaffold2"),
+            sep = "",
+            remove = TRUE,
+      ) %>%
+      relocate(Strain, .before = "ShortID") %>%
+      relocate(Scaffold, .before = "ShortID") %>%
+      relocate(Array, .before = "ShortID") %>%
+      relocate(ArrayID, .before = "ShortID")
+  }
+  
+  
+  
+  return(t)
+}
+
+#Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+
+```
+
+
+```{r}
+#
+# Add to each spacer the relative distance from the leader (or NA if the direction is not set) (0 close to leader, 1 far from leader)
+#
+add_reldist_leader <- function(input_tibble){
+  return(input_tibble %>% 
+           add_count(ArrayID, name = "NbSpacerInArray") %>%
+           mutate(rel_dist_leader = ifelse(Orientation == "+", SpacerNb/(NbSpacerInArray-1), -1 * (SpacerNb - NbSpacerInArray + 1) / (NbSpacerInArray-1))) %>%
+           mutate(rel_dist_leader = ifelse(Orientation == "ND", NA, rel_dist_leader)) %>% 
+           mutate(rel_dist_leader = ifelse(NbSpacerInArray == 1, NA, rel_dist_leader)))
+}
+
+# Update: removed  "filter(EvidenceLvl > 3) "
+
+
+#
+# Convert the array id string to sequence string (removes the _x)
+#
+array_to_sequence <- function(s){
+  return(gsub("_[0-9]+$", "", s))
+}
+
+# DEPRECATED: the datasets are modified to include the SequenceID for all 
+# add the Sequence ID in the spacer df (from the array ID)
+#
+add_array_id <- function(input_tibble){
+  output_tibble <- input_tibble %>% 
+    mutate(SequenceID = array_to_sequence(ArrayID))
+  return(output_tibble)
+}
+```
+
+### Read cas type data (CCF)
+```{r}
+#
+# Read the CasType dataset
+#
+
+read_casType_data <- function(species, source = "DIALACT"){
+  return(read_delim(paste(data_folder, "/", species ,"/", source,"/", species, "_CasType_v1.csv", sep = ""), 
+    ";", 
+    escape_double = FALSE, 
+    col_names = T, 
+    trim_ws = TRUE) %>% 
+      separate(SequenceID, c("tmp", "Scaffold"), sep = "_") %>% 
+      select(-tmp))
+}
+```
+
+
+### Read gene data
+```{r}
+#
+# Get the genes detected by CRISPRCasFinder
+#
+read_gene_data <- function(species, source = "DIALACT"){
+  return(read_delim(paste(data_folder, "/", species ,"/", source,"/", species, "_Cas_genes_v1.csv", sep = ""),
+                    ";",
+                    escape_double = FALSE,
+                    col_names = TRUE)%>% 
+      separate(SequenceID, c("tmp", "Scaffold"), sep = "_") %>% 
+      select(-tmp))
+}
+```
+
+
+
+```{r}
+#
+# Converts dna string set to dataframe
+#
+dss2df <- function(dss) data.frame(length=width(dss), seq=as.character(dss), names=names(dss))
+```
+
+
+### DR fasta
+
+```{r}
+
+#
+# read a fasta file into a tibble
+#
+#TODO: maybe need to clarify how we read the files -> give the path in parameter instead ?
+read_DR_fasta_tibble <- function(species, source = "DIALACT") {
+  fastafile = paste(data_folder,
+                    "/",
+                    species ,
+                    "/",
+                    source,
+                    "/",
+                    species,
+                    "_DR_v1.fasta",
+                    sep = "")
+  
+  dna <- readDNAStringSet(fastafile)
+  dfdna <- dss2df(dna)
+  tbldna <- as_tibble(dfdna)
+  
+  print(tbldna)
+  
+  if (source == "DIALACT") {
+    print("Source: DIALACT")
+    tbldna <- tbldna %>%
+      separate(names, c("names", "Array"), sep = '_(?=[0-9]+$)') %>%
+      separate(names, c("names", "Scaffold"), sep = '_(?=[[:alnum:]]+$)') %>%
+      separate(names, c("names", "Strain"), sep = '_(?=[[:alnum:]-]+$)') %>%
+      mutate(Organism = names) %>%
+      select(-names) %>%
+      relocate(Organism, .before = "Strain") %>%
+      relocate(seq, .after = "Array") %>%
+      relocate(length, .after = "seq")
+  }
+  
+  if (source == "NCBI") {
+    print("Source: NCBI")
+    tbldna <- tbldna %>%
+      separate(names, c("names", "Array"), sep = '_(?=[0-9]+$)') %>%
+      separate(names, c("names", "Scaffold1"), sep = '_(?=[[:alnum:]]+$)') %>%
+      separate(names, c("names", "Scaffold2"), sep = '_(?=[[:alnum:]]+$)') %>%
+      unite(Scaffold, c("Scaffold2","Scaffold1"), sep = "") %>% 
+      separate(names, c("names", "Strain"), sep = '_(?=[[:alnum:].]+$)') %>%
+      mutate(Organism = names) %>%
+      select(-names) %>%
+      relocate(Organism, .before = "Strain") %>%
+      relocate(seq, .after = "Array") %>%
+      relocate(length, .after = "seq")
+    
+    
+  }
+  print("after")
+  print(tbldna)
+  
+  return(tbldna)
+}
+
+
+#Lactobacillus_casei_DR = read_DR_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+
+#Lactobacillus_delbrueckii_subsp_lactis_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+#Lactobacillus_delbrueckii_subsp_lactis_DR
+```
+
+
+### Spacer fasta
+```{r}
+#TODO: seriously sometime, rename this Spacers instead of CRISPR
+#
+# Read the spacer fasta fila and returns a tibble
+#
+read_Spacers_fasta_tibble <- function(species, source = "DIALACT"){
+  fastafile = paste(data_folder, "/", species ,"/", source,"/", species, "_CRISPR_v1.fasta", sep = "")
+  dna <- readDNAStringSet(fastafile)
+  dfdna <- dss2df(dna)
+  tbldna <- as_tibble(dfdna) 
+  
+  
+  if(source == "DIALACT"){
+    tbldna <- tbldna %>%
+    separate(names, c("names", "Spacer"), sep='_(?=[0-9]+$)') %>%
+    separate(names, c("names", "Array"), sep='_(?=[0-9]+$)') %>% 
+    separate(names, c("names", "Scaffold"), sep='_(?=[[:alnum:]]+$)')%>% 
+    separate(names, c("names", "Strain"), sep='_(?=[[:alnum:]-]+$)') %>% 
+    separate(names, c("names", "Orientation"), sep='_(?=[[:alnum:]+-]+$)') %>% 
+    mutate(Organism = names) %>% 
+    select(-names) %>% 
+    relocate(Organism, .before = "Strain") %>% 
+    relocate(seq, .after = "Array") %>% 
+    relocate(length, .after = "seq") %>% 
+      relocate(Orientation, .after = "Array")
+  }
+    
+  if(source == "NCBI"){
+        tbldna <- tbldna %>%
+    separate(names, c("names", "Spacer"), sep='_(?=[0-9]+$)') %>%
+    separate(names, c("names", "Array"), sep='_(?=[0-9]+$)') %>% 
+    separate(names, c("names", "Scaffold1"), sep='_(?=[[:alnum:]]+$)')%>% 
+    separate(names, c("names", "Scaffold2"), sep='_(?=[[:alnum:]]+$)')%>% 
+      unite(Scaffold, c("Scaffold2","Scaffold1"), sep = "") %>% 
+    separate(names, c("names", "Strain"), sep='_(?=[[:alnum:].]+$)') %>% 
+    separate(names, c("names", "Orientation"), sep='_(?=[[:alnum:]+-]+$)') %>% 
+    mutate(Organism = names) %>% 
+    select(-names) %>% 
+    relocate(Organism, .before = "Strain") %>% 
+    relocate(seq, .after = "Array") %>% 
+    relocate(length, .after = "seq") %>% 
+      relocate(Orientation, .after = "Array")
+  }
+    
+
+
+  return(tbldna)
+}
+
+
+#Lactobacillus_casei_Spacers = read_Spacers_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+#Lactobacillus_delbrueckii_subsp_lactis_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+#Lactobacillus_delbrueckii_subsp_lactis_Spacers
+
+```
+
+
+
+# Basic stats FCT
+
+TODO: number of arrays (if any!!), number of spacers, cas types
+
+```{r}
+#
+#
+#
+get_DR_info <- function(input_tibble){
+  input_tibble %>% 
+  summarise(unique_dr = n_distinct(seq),      # Number of unique repeats
+            total_dr = n(),                   # Total number of repeats, matches with the total number of arrays
+            min_length = min(length),         # Minimum repeat length
+            max_length = max(length),         # Maximum repeat length
+            mean_length = mean(length),       # Mean repeat length
+            median_length = median(length),   # Median repeat length
+            sd_length = sd(length),           # Standart deviation of repeat lengths
+            iqr_length = IQR(length))         # Inter Quartile Range of repeat lengths
+}
+
+#
+#
+#
+get_spacers_info <- function(input_tibble){
+  input_tibble %>% 
+  summarise(unique_spacers = n_distinct(seq), # Number of unique spacers
+            total_spacers = n(),              # Total number of spacers
+            min_length = min(length),         # Minimum spacers length
+            max_length = max(length),         # Maximum spacers length
+            mean_length = mean(length),       # Mean spacers length
+            median_length = median(length),   # Median spacers length
+            sd_length = sd(length),           # Standart deviation of spacers lengths
+            iqr_length = IQR(length))         # Inter Quartile Range of spacers lengths
+}
+```
+
+
+
+
+## Plot cluster size
+```{r}
+#
+# Plot the cluster size / amount of cluster with size n
+#
+plot_cluster_sizes <- function(input_v2){
+  
+  # Removes NA and create a summary of the dataset grouped by cluster (min, max and count)
+  Lb_dist <- input_v2 %>% 
+  filter(!is.na(rel_dist_leader)) %>% 
+  group_by(cluster) %>% 
+  summarise(min = min(rel_dist_leader), mean = mean(rel_dist_leader), max = max(rel_dist_leader), NbSpacers = n()) %>% 
+  count(NbSpacers)
+
+  # Create the axis
+  upper=max(Lb_dist$NbSpacers)
+  lower=1
+  v <- c(lower:upper)
+  
+  
+  compl <- Lb_dist %>% 
+    complete(NbSpacers = v, fill = list(n = 0)) %>% 
+    ggplot(aes(x = NbSpacers, y = n)) + 
+    geom_bar(stat='identity', fill=rgb(0.1,0.4,0.5,0.7)) +
+    ggtitle("Cluster size") +
+    xlab("Cluster size") +
+    ylab("# of cluster") + 
+    theme( axis.line = element_line(colour = "darkblue", size = .5, linetype = "solid"))
+  compl
+
+}
+
+
+
+
+
+```
+
+## FCT Distances within clusters
+```{r}
+# Cluster: 80% similarity between the spacers
+# Cluster size: are many spacers very common (big clusters) or unique (smallclusters)
+# Distance: are similar clusters usually at the same relative distance from the leader ?
+# How does the distance vary in the clusters ?
+# -> we see that the average distance from the leader does not depend at all on the cluster size 
+# (cluster size = a lot / a few similar other spacer -> rare or not spacers). 
+
+clusterSizeMeanDist <- function(input_tibblev2){
+  d2 <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>%
+    group_by(cluster) %>% 
+    mutate(varDist = sd(rel_dist_leader), avgDist = mean(rel_dist_leader), NbSpacers = n()) %>% 
+    ggplot(aes(x=NbSpacers, y=avgDist)) +
+    geom_point(alpha=0.1) + 
+    theme_bw()
+  d2
+}
+
+
+
+
+clusterSizeVarDist <- function(input_tibblev2){
+  d2 <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>%
+    group_by(cluster) %>% 
+    mutate(varDist = sd(rel_dist_leader), avgDist = mean(rel_dist_leader), NbSpacers = n()) %>% 
+    ggplot(aes(x=NbSpacers, y=varDist)) +
+    geom_point(alpha=0.1) + 
+    theme_bw()
+  d2
+}
+
+
+
+
+clusterSizeMeanDist <- function(input_tibblev2){
+  d2 <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>%
+    group_by(cluster) %>% 
+    mutate(varDist = sd(rel_dist_leader), avgDist = mean(rel_dist_leader), NbSpacers = n()) %>% 
+    ggplot(aes(x=NbSpacers, y=avgDist)) +
+    geom_point(alpha=0.1) + 
+    theme_bw()
+  d2
+}
+
+
+```
+
+
+Explore a cluster
+```{r}
+#Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2 %>% filter(cluster == 95)
+```
+
+
+## FCT Cluster distance variance (nice)
+```{r}
+#
+# Plots the variance of the distances within each clusters. 
+#
+clst_dist_variance <- function(input_tibblev2){
+  
+  sd_rel_dist_leader <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(cluster) %>% 
+    mutate(DistVariance = sd(rel_dist_leader)) 
+  #View(sd_rel_dist_leader)
+  
+  plt <- sd_rel_dist_leader %>% 
+    group_by(cluster) %>% 
+    ggplot(aes(x = DistVariance, fill = ..x..)) + 
+    geom_histogram(binwidth = 0.01)+
+    ggtitle("Variance of the relative distance from the leader within similar spacers cluster") +
+    xlab("Standard Deviation") +
+    ylab("Clusters") +
+    scale_fill_gradient2(low='orange', mid='red', high='white', midpoint=0.5,name= 'SD', trans = "log2") + scale_colour_calc() +
+    theme(axis.title.x = element_text(colour = "grey"),
+          axis.title.y = element_text(colour = "grey"),
+          axis.text = element_text(colour = "grey"),
+          plot.title = element_text(colour = "grey"),
+          panel.grid.major = element_line(size = 0.5,
+                                          linetype = 'solid',
+                                          colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25,
+                                          linetype = 'solid',
+                                          colour = "grey"),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA)
+    )
+  
+  
+  ggsave(plot = plt, file = "graphasdf.png", 
+       type = "cairo-png",  bg = "transparent",
+       width = 25, height = 15, units = "cm", dpi = 800)
+  #NA's are removed for arrays with out relative distances but remains later if the array has only 1 element (SD formula gives a 0/0 if only one element)
+  # For Lb_delbruekii we can see that the variance is rarely over 0.2
+  
+  plt
+}
+
+
+
+#clst_dist_variance(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+#clusterSizeVarDist(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+#clst_dist_variance(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+  
+```
+
+
+
+
+
+
+
+
+Mean distance within cluster
+
+
+```{r}
+#
+# 
+#
+clst_dist_mean <- function(input_tibblev2){
+  mean_rel_dist_leader <- input_tibblev2 %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(cluster) %>% 
+    mutate(DistMean = mean(rel_dist_leader)) 
+  
+  plt <- mean_rel_dist_leader %>% 
+    group_by(cluster) %>% 
+    ggplot(aes(x = DistMean)) + 
+    geom_histogram(binwidth = 0.01)+
+      ggtitle("Mean of the relative distance from the leader within spacers cluster") +
+      xlab("Mean distance from the leader") +
+      ylab("Clusters") + 
+      theme( axis.line = element_line(colour = "darkblue", size = .5, linetype = "solid"))
+  
+  ggplotly(plt)
+  
+  #NA's are removed for clusters without distances. Mean does not produce NA as clusters with 1 element still have a mean (not like with SD)
+  # For Lb_delbruekii we can see that the variance is rarely over 0.2
+  
+}
+
+#clst_dist_mean(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+
+```
+It confirms that the similar spacers are usually close to each others, if they were placed at random or opposite, we would see a more normal distribution with a peak at the center. 
+
+
+
+
+
+Summary function: plot or give useful numbers (check todo's)
+## TODO FCT summary
+```{r}
+#
+# TODO: a nice summary function
+#
+sumitup <- function(input_v1){
+  nbSpacers <- input_v1 %>% tally()
+  print("Spacers summary: ")
+  print(paste("Number of spacers: ", nbSpacers, sep = ""))
+  
+  nbSpacers4 <- input_v1 %>% filter(EvidenceLvl > 3) %>% tally()
+  print(paste("Including ", nbSpacers4, " spacers of confidence level 4.", sep = ""))
+}
+
+
+#sumitup(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v1)
+```
+
+
+
+
+## FCT Cas
+
+```{r}
+
+showCasTypes <- function(input_cas_v1){
+  input_cas_v1 %>% count(CasType)
+}
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+## FCT Duplicated spacers
+
+```{r}
+#
+# Duplicated spacers
+#
+
+
+get_duplicated_spacers <- function(input_tibble){
+    # Array | sequence | number of time the sequence appears in the array
+  duplicated_spacers <- input_tibble %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(ArrayID) %>% 
+    add_tally(n_distinct(SpacerSeq), name = "Nb_unique_seq") %>% 
+    ungroup(ArrayID) %>% 
+    count(ArrayID, SpacerSeq) %>% 
+    filter(n > 1)
+  return(duplicated_spacers)
+}
+
+
+
+get_duplicated_spacers_position <- function(input_tibble){ 
+  # Informations about the position of the sequences appearing more than once in an array (result: they DO NOT always follow each other) 
+  duplicated_spacers_position <- input_tibble %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    group_by(ArrayID) %>% 
+    add_tally(n_distinct(SpacerSeq), name = "Nb_unique_seq") %>% 
+    ungroup(ArrayID) %>% 
+    count(ArrayID, SpacerSeq) %>% 
+    filter(n > 1) %>% 
+    left_join(input_tibble, by = c("SpacerSeq", "ArrayID")) %>% 
+    select(ArrayID, SpacerSeq, SpacerNb, rel_dist_leader)
+  return(duplicated_spacers_position)
+}
+
+
+get_duplicated_spacers_pos_diff <- function(input_tibble){
+  # Now get the difference in position and the difference of distance. Are the duplicated spacers next to eachother? (position in the array) => only when 2 identical spacers
+  # And what the difference in relative distance?
+  
+  duplicated_spacers_pos_diff <- input_tibble %>% 
+    filter(!is.na(rel_dist_leader)) %>% 
+    count(ArrayID, SpacerSeq) %>% 
+    filter(n == 2) %>% 
+    left_join(input_tibble, by = c("SpacerSeq", "ArrayID")) %>% 
+    select(ArrayID, SpacerSeq, SpacerNb, rel_dist_leader, NbSpacerInArray) %>% 
+    group_by(ArrayID, SpacerSeq) %>%
+    summarise(DistBetweenSpacers = abs(diff(SpacerNb)), RelDistDiff = abs(diff(rel_dist_leader)), mean(NbSpacerInArray), duplicates = n()) 
+  return(duplicated_spacers_pos_diff)
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+## FCT Arrays analysis
+
+
+```{r}
+#
+# Plots the array sizes and the number of array with this size. COlored by DR clusters.
+#
+arraySizeDR <- function(input_tibblev2){
+  
+  # complete(n = 0:maxx, fill = list(n = 0)) %>% 
+  
+  d2 <- input_tibblev2 %>% 
+  mutate(DR_cluster = as_factor(DR_cluster)) %>% 
+  count(DR_cluster, ArrayID) %>% 
+  count(DR_cluster, n) %>% 
+  replace_na(list(nn = 0))
+
+fig2 <- plot_ly(d2, x = ~n, y = ~nn, type = 'bar', color = ~DR_cluster, colors = "Set1")
+fig2 <- fig2 %>% layout(title = "Number of array with n spacers / clustered by Direct Repeats", yaxis = list(title = 'Count'),  barmode = 'stack', legend = list(title=list(text='<b> Cluster ID </b>')))
+fig2
+}
+
+
+
+
+```
+
+
+
+
+#----------------------------------------------
+# Organism data
+#----------------------------------------------
+
+
+# Main dataframes
+
+Create the different empty dataframes. For each species, bind the rows and in the end join (With DR) / plot them in one go. 
+
+```{r}
+Dialact_CRISPRscope_spacers <- tibble()
+Dialact_spacers <- tibble()
+Dialact_repeats <- tibble()
+#Dialact_cas <- tibble()
+
+Dialact_genes <- tibble()
+
+# Done at the end: join Dialact_crisprsocpe_spacer with Dialact_repeats 
+```
+
+
+#----------------------------------------------
+
+
+
+## Lactobacillus delbrueckii (DIALACT)
+
+Dialact taxid: 1584
+
+
+```{r, echo=FALSE}
+# Lactobacillus_delbrueckii
+
+Lactobacillus_delbrueckii_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii", "DIALACT")
+Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactobacillus_delbrueckii_PerSpacer_CRISPR_v1)
+
+Lactobacillus_delbrueckii_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii", "DIALACT")
+
+#Lactobacillus_delbrueckii_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii", "DIALACT")
+
+#Lactobacillus_delbrueckii_CasType_v1 <- read_casType_data("Lactobacillus_delbrueckii", "DIALACT")
+
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_delbrueckii_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_delbrueckii_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_delbrueckii_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_delbrueckii_PerSpacer_CRISPR_v2)
+
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_delbrueckii"))
+```
+
+
+
+
+
+## Lactobacillus delbrueckii subsb. lactis (DIALACT)
+
+Dialact taxid: 29397
+
+Are combined to Lactobacillus delbrueckii
+
+```{r}
+# Lactobacillus_delbrueckii_subsb_lactis
+
+Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+
+
+Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_v1)
+
+#Lactobacillus_delbrueckii_subsp_lactis_CasType_v1 <- read_casType_data("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+Lactobacillus_delbrueckii_subsp_lactis_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+#Lactobacillus_delbrueckii_subsp_lactis_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii_subsp_lactis", "DIALACT")
+#Lactobacillus_delbrueckii_subsp_lactis_gene = read_gene_data("Lactobacillus_delbrueckii_subsp_lactis")
+
+
+
+
+# COMBINE TO SPECIES (ignore subsp)
+#Lactobacillus_delbrueckii_subsp_lactis_Spacers$Organism = "Lactobacillus_delbrueckii"
+
+Lactobacillus_delbrueckii_subsp_lactis_DR$Organism = "Lactobacillus_delbrueckii"
+#Lactobacillus_delbrueckii_subsp_lactis_CasType_v1$Organism = "Lactobacillus_delbrueckii"
+
+Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2$Organism = "Lactobacillus_delbrueckii"
+
+#Lactobacillus_delbrueckii_subsp_lactis_gene$Organism = "Lactobacillus_delbrueckii"
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_delbrueckii_subsp_lactis_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_delbrueckii_subsp_lactis_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_delbrueckii_subsp_lactis_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_delbrueckii_subsp_lactis_PerSpacer_CRISPR_V2)
+
+#Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_delbrueckii_subsp_lactis_gene)
+```
+
+
+
+
+## Lactobacillus delbrueckii subsp. bulgaricus (DIALACT) 
+
+Dialact taxid: 1585
+
+```{r}
+# Lactobacillus_delbrueckii_subsp_bulgaricus
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_delbrueckii_subsp_bulgaricus")
+Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_v1)
+
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_DR = read_DR_fasta_tibble("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+#Lactobacillus_delbrueckii_subsp_bulgaricus_Spacers = read_Spacers_fasta_tibble("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+#Lactobacillus_delbrueckii_subsp_bulgaricus_CasType_v1 <- read_casType_data("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+#Lactobacillus_delbrueckii_subsp_bulgaricus_gene = read_gene_data("Lactobacillus_delbrueckii_subsp_bulgaricus")
+
+# COMBINE SPECIES 
+Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_V2$Organism="Lactobacillus_delbrueckii"
+
+Lactobacillus_delbrueckii_subsp_bulgaricus_DR$Organism="Lactobacillus_delbrueckii"
+#Lactobacillus_delbrueckii_subsp_bulgaricus_Spacers$Organism="Lactobacillus_delbrueckii"
+#Lactobacillus_delbrueckii_subsp_bulgaricus_CasType_v1$Organism="Lactobacillus_delbrueckii"
+#Lactobacillus_delbrueckii_subsp_bulgaricus_gene$Organism="Lactobacillus_delbrueckii"
+
+
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_delbrueckii_subsp_bulgaricus_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_delbrueckii_subsp_bulgaricus_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_delbrueckii_subsp_bulgaricus_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_delbrueckii_subsp_bulgaricus_PerSpacer_CRISPR_V2)
+
+#Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_delbrueckii_subsp_bulgaricus_gene)
+```
+
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus rhamnosus (DIALACT) 
+
+Taxid Dialact: 47715 
+
+```{r}
+# Lactobacillus_rhamnosus
+
+Lactobacillus_rhamnosus_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_rhamnosus")
+Lactobacillus_rhamnosus_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_rhamnosus_PerSpacer_CRISPR_v1)
+
+Lactobacillus_rhamnosus_DR = read_DR_fasta_tibble("Lactobacillus_rhamnosus")
+
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_rhamnosus_DR)
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_rhamnosus_PerSpacer_CRISPR_V2)
+
+
+#Lactobacillus_rhamnosus_CasType_v1 <- read_casType_data("Lactobacillus_rhamnosus")
+#Lactobacillus_rhamnosus_Spacers = read_Spacers_fasta_tibble("Lactobacillus_rhamnosus")
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_rhamnosus_Spacers)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_rhamnosus_CasType_v1)
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_rhamnosus"))
+
+```
+
+
+## Lactobacillus rhamnosus (NCBI)
+
+EMPTY (causes errors)
+```{r}
+# Lactobacillus_rhamnosus_PerSpacer_CRISPR_v1_2 <- read_spacers_data("Lactobacillus_rhamnosus", source = "NCBI")
+# Lactobacillus_rhamnosus_PerSpacer_CRISPR_V2_2 <- add_reldist_leader(Lactobacillus_rhamnosus_PerSpacer_CRISPR_v1_2)
+# 
+# Lactobacillus_rhamnosus_DR_2 = read_DR_fasta_tibble("Lactobacillus_rhamnosus", source = "NCBI")
+# 
+# Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_rhamnosus_DR_2)
+# Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_rhamnosus_PerSpacer_CRISPR_V2_2)
+```
+
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus helveticus (DIALACT) 
+
+Dialact taxid: 1587
+
+
+```{r, echo=FALSE}
+# Lactobacillus_helveticus
+
+Lactobacillus_helveticus_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_helveticus")
+Lactobacillus_helveticus_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactobacillus_helveticus_PerSpacer_CRISPR_v1)
+
+#Lactobacillus_helveticus_CasType_v1 <- read_casType_data("Lactobacillus_helveticus")
+
+
+
+Lactobacillus_helveticus_DR = read_DR_fasta_tibble("Lactobacillus_helveticus")
+
+
+#Lactobacillus_helveticus_Spacers = read_Spacers_fasta_tibble("Lactobacillus_helveticus")
+
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_helveticus_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_helveticus_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_helveticus_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_helveticus_PerSpacer_CRISPR_v2)
+
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_helveticus"))
+```
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus fermentum (NCBI)
+
+
+
+
+```{r, echo=FALSE}
+# Lactobacillus_fermentum
+
+Lactobacillus_fermentum_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_fermentum", source = "NCBI")
+Lactobacillus_fermentum_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactobacillus_fermentum_PerSpacer_CRISPR_v1)
+
+Lactobacillus_fermentum_CasType_v1 <- read_casType_data("Lactobacillus_fermentum", source = "NCBI")
+
+
+
+Lactobacillus_fermentum_DR = read_DR_fasta_tibble("Lactobacillus_fermentum", source = "NCBI")
+
+
+#Lactobacillus_fermentum_Spacers = read_Spacers_fasta_tibble("Lactobacillus_fermentum", source = "NCBI")
+
+
+# # Bind
+# Dialact_CRISPRscope_spacers <- tibble()
+
+# Dialact_spacers <- tibble()
+# Dialact_repeats <- tibble()
+# Dialact_cas <- tibble()
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_fermentum_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_fermentum_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_fermentum_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_fermentum_PerSpacer_CRISPR_v2)
+
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Lactobacillus_fermentum", source = "NCBI"))
+```
+
+
+#---------------------------------------------------------------------------------------------
+## Lactobacillus casei (NCBI)
+
+
+
+```{r}
+# Lactobacillus_casei
+
+Lactobacillus_casei_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_casei", source = "NCBI")
+Lactobacillus_casei_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_casei_PerSpacer_CRISPR_v1)
+
+
+Lactobacillus_casei_DR = read_DR_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+
+#Lactobacillus_casei_Spacers = read_Spacers_fasta_tibble("Lactobacillus_casei", source = "NCBI")
+
+#Lactobacillus_casei_CasType_v1 <- read_casType_data("Lactobacillus_casei", source = "NCBI")
+
+#Lactobacillus_casei_gene = read_gene_data("Lactobacillus_casei", source = "NCBI")
+
+# COMBINE SPECIES 
+Lactobacillus_casei_PerSpacer_CRISPR_V2$Organism="Lactobacillus_casei"
+Lactobacillus_casei_DR$Organism="Lactobacillus_casei"
+#Lactobacillus_casei_Spacers$Organism="Lactobacillus_casei"
+#Lactobacillus_casei_CasType_v1$Organism="Lactobacillus_casei"
+#Lactobacillus_casei_gene$Organism="Lactobacillus_casei"
+
+
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_casei_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_casei_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_casei_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_casei_PerSpacer_CRISPR_V2)
+
+#Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_casei_gene)
+```
+
+## Lactobacillus paracasei (NCBI)
+
+
+
+```{r}
+# Lactobacillus_paracasei
+
+Lactobacillus_paracasei_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactobacillus_paracasei", source = "NCBI")
+Lactobacillus_paracasei_PerSpacer_CRISPR_V2 <- add_reldist_leader(Lactobacillus_paracasei_PerSpacer_CRISPR_v1)
+
+
+Lactobacillus_paracasei_DR = read_DR_fasta_tibble("Lactobacillus_paracasei", source = "NCBI")
+
+#Lactobacillus_paracasei_Spacers = read_Spacers_fasta_tibble("Lactobacillus_paracasei", source = "NCBI")
+
+#Lactobacillus_paracasei_CasType_v1 <- read_casType_data("Lactobacillus_paracasei", source = "NCBI")
+
+#Lactobacillus_paracasei_gene = read_gene_data("Lactobacillus_paracasei", source = "NCBI")
+
+# COMBINE SPECIES 
+Lactobacillus_paracasei_PerSpacer_CRISPR_V2$Organism="Lactobacillus_casei"
+Lactobacillus_paracasei_DR$Organism="Lactobacillus_casei"
+#Lactobacillus_paracasei_Spacers$Organism="Lactobacillus_casei"
+#Lactobacillus_paracasei_CasType_v1$Organism="Lactobacillus_casei"
+#Lactobacillus_paracasei_gene$Organism="Lactobacillus_casei"
+
+
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactobacillus_paracasei_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactobacillus_paracasei_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactobacillus_paracasei_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactobacillus_paracasei_PerSpacer_CRISPR_V2)
+
+#Dialact_genes = bind_rows(Dialact_genes, Lactobacillus_paracasei_gene)
+```
+
+#---------------------------------------------------------------------------------------------
+## Lactococcus lactis subsp. lactis (DIALACT) 
+
+Dialact taxid: 1360
+
+
+
+
+```{r, echo=FALSE}
+# Lactococcus_lactis_subsp_lactis
+# ONly evidence lvl 1 ¨!!!
+
+Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactococcus_lactis_subsp_lactis")
+Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v1)
+
+Lactococcus_lactis_subsp_lactis_DR = read_DR_fasta_tibble("Lactococcus_lactis_subsp_lactis")
+
+
+#Lactococcus_lactis_subsp_lactis_Spacers = read_Spacers_fasta_tibble("Lactococcus_lactis_subsp_lactis")
+
+#Lactococcus_lactis_subsp_lactis_CasType_v1 <- read_casType_data("Lactococcus_lactis_subsp_lactis")
+
+#Lactococcus_lactis_subsp_lactis_gene = read_gene_data("Lactococcus_lactis_subsp_lactis")
+
+
+#COMBINE SPECIES
+
+Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v2$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_lactis_DR$Organism="Lactococcus_lactis"
+#Lactococcus_lactis_subsp_lactis_Spacers$Organism="Lactococcus_lactis"
+#Lactococcus_lactis_subsp_lactis_CasType_v1$Organism="Lactococcus_lactis"
+#Lactococcus_lactis_subsp_lactis_gene$Organism="Lactococcus_lactis"
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactococcus_lactis_subsp_lactis_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactococcus_lactis_subsp_lactis_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactococcus_lactis_subsp_lactis_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactococcus_lactis_subsp_lactis_PerSpacer_CRISPR_v2)
+
+#Dialact_genes = bind_rows(Dialact_genes, Lactococcus_lactis_subsp_lactis_gene)
+```
+
+
+
+## Lactococcus lactis subsp. cremoris (NCBI)
+
+No evidence level 4
+
+```{r}
+
+# Lactococcus_lactis_subsp_cremoris
+
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v1)
+
+Lactococcus_lactis_subsp_cremoris_DR = read_DR_fasta_tibble("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+#Lactococcus_lactis_subsp_cremoris_Spacers = read_Spacers_fasta_tibble("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+#Lactococcus_lactis_subsp_cremoris_CasType_v1 <- read_casType_data("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+#Lactococcus_lactis_subsp_cremoris_gene = read_gene_data("Lactococcus_lactis_subsp_cremoris", source = "NCBI")
+
+
+#COMBINE SPECIES
+
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_cremoris_DR$Organism="Lactococcus_lactis"
+#Lactococcus_lactis_subsp_cremoris_Spacers$Organism="Lactococcus_lactis"
+#Lactococcus_lactis_subsp_cremoris_CasType_v1$Organism="Lactococcus_lactis"
+#Lactococcus_lactis_subsp_cremoris_gene$Organism="Lactococcus_lactis"
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Lactococcus_lactis_subsp_cremoris_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Lactococcus_lactis_subsp_cremoris_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Lactococcus_lactis_subsp_cremoris_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2)
+
+#Dialact_genes = bind_rows(Dialact_genes, Lactococcus_lactis_subsp_cremoris_gene)
+
+```
+
+
+## Lactococcus lactis subsp. cremoris (DIALACT)
+
+TODO - copy data
+
+```{r}
+
+# Lactococcus_lactis_subsp_cremoris
+
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactococcus_lactis_subsp_cremoris", source = "DIALACT")
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v1)
+
+Lactococcus_lactis_subsp_cremoris_DR = read_DR_fasta_tibble("Lactococcus_lactis_subsp_cremoris", source = "DIALACT")
+
+
+#COMBINE SPECIES
+
+Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2$Organism="Lactococcus_lactis"
+Lactococcus_lactis_subsp_cremoris_DR$Organism="Lactococcus_lactis"
+
+Dialact_repeats = bind_rows(Dialact_repeats, Lactococcus_lactis_subsp_cremoris_DR)
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactococcus_lactis_subsp_cremoris_PerSpacer_CRISPR_v2)
+
+```
+
+
+#---------------------------------------------------------------------------------------------
+# Lactiplantibacillus plantarum (NCBI)
+Lactiplantibacillus_plantarum
+
+
+
+```{r}
+# Lactiplantibacillus_plantarum
+
+Lactiplantibacillus_plantarum_PerSpacer_CRISPR_v1 <- read_spacers_data("Lactiplantibacillus_plantarum", source = "NCBI")
+Lactiplantibacillus_plantarum_PerSpacer_CRISPR_v2 <- add_reldist_leader(Lactiplantibacillus_plantarum_PerSpacer_CRISPR_v1)
+
+
+Lactiplantibacillus_plantarum_DR = read_DR_fasta_tibble("Lactiplantibacillus_plantarum", source = "NCBI")
+
+Dialact_repeats = bind_rows(Dialact_repeats, Lactiplantibacillus_plantarum_DR)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Lactiplantibacillus_plantarum_PerSpacer_CRISPR_v2)
+
+
+
+```
+
+
+
+#---------------------------------------------------------------------------------------------
+## Streptococcus thermophilus (DIALACT)
+
+Dialact taxid: 1308
+
+
+
+```{r}
+# Streptococcus_thermophilus
+
+Streptococcus_thermophilus_PerSpacer_CRISPR_v1 <- read_spacers_data("Streptococcus_thermophilus")
+Streptococcus_thermophilus_PerSpacer_CRISPR_v2 <- add_reldist_leader(Streptococcus_thermophilus_PerSpacer_CRISPR_v1)
+
+
+Streptococcus_thermophilus_DR = read_DR_fasta_tibble("Streptococcus_thermophilus")
+
+Dialact_repeats = bind_rows(Dialact_repeats, Streptococcus_thermophilus_DR)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Streptococcus_thermophilus_PerSpacer_CRISPR_v2)
+
+
+
+#Streptococcus_thermophilus_Spacers = read_Spacers_fasta_tibble("Streptococcus_thermophilus")
+#Streptococcus_thermophilus_CasType_v1 <- read_casType_data("Streptococcus_thermophilus")
+#Dialact_spacers = bind_rows(Dialact_spacers, Streptococcus_thermophilus_Spacers)
+#Dialact_cas = bind_rows(Dialact_cas, Streptococcus_thermophilus_CasType_v1)
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Streptococcus_thermophilus"))
+
+```
+#---------------------------------------------------------------------------------------------
+## Leuconostoc lactis (DIALACT) 
+
+
+
+```{r}
+Leuconostoc_lactis_PerSpacer_CRISPR_v1 <- read_spacers_data("Leuconostoc_lactis", source = "NCBI")
+Leuconostoc_lactis_PerSpacer_CRISPR_v2 <- add_reldist_leader(Leuconostoc_lactis_PerSpacer_CRISPR_v1)
+
+Leuconostoc_lactis_DR = read_DR_fasta_tibble("Leuconostoc_lactis", source = "NCBI")
+
+Dialact_repeats = bind_rows(Dialact_repeats, Leuconostoc_lactis_DR)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Leuconostoc_lactis_PerSpacer_CRISPR_v2)
+
+
+```
+
+
+
+#---------------------------------------------------------------------------------------------
+## Leuconostoc mesenteroides (DIALACT) 
+
+Dialact taxid: 1245 (species)
+
+No CRISPR with evidence level >1
+
+
+```{r}
+# Leuconostoc_mesenteroides
+
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1 <- read_spacers_data("Leuconostoc_mesenteroides")
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2 <- add_reldist_leader(Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1)
+
+Leuconostoc_mesenteroides_DR = read_DR_fasta_tibble("Leuconostoc_mesenteroides")
+
+Dialact_repeats = bind_rows(Dialact_repeats, Leuconostoc_mesenteroides_DR)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2)
+
+
+
+
+#Leuconostoc_mesenteroides_Spacers = read_Spacers_fasta_tibble("Leuconostoc_mesenteroides")
+#Leuconostoc_mesenteroides_CasType_v1 <- read_casType_data("Leuconostoc_mesenteroides")
+#Dialact_cas = bind_rows(Dialact_cas, Leuconostoc_mesenteroides_CasType_v1)
+#Dialact_spacers = bind_rows(Dialact_spacers, Leuconostoc_mesenteroides_Spacers)
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Leuconostoc_mesenteroides"))
+```
+
+
+
+## Leuconostoc mesenteroides (NCBI) 
+
+
+No CRISPR with evidence level >1
+```{r}
+# Leuconostoc_mesenteroides
+
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1_2 <- read_spacers_data("Leuconostoc_mesenteroides", source = "NCBI")
+Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2_2 <- add_reldist_leader(Leuconostoc_mesenteroides_PerSpacer_CRISPR_v1_2)
+
+Leuconostoc_mesenteroides_DR_2 = read_DR_fasta_tibble("Leuconostoc_mesenteroides", source = "NCBI")
+
+Dialact_repeats = bind_rows(Dialact_repeats, Leuconostoc_mesenteroides_DR_2)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Leuconostoc_mesenteroides_PerSpacer_CRISPR_v2_2)
+
+
+```
+
+
+
+
+#---------------------------------------------------------------------------------------------
+## Propionibacterium_freudenreichii (DIALACT) 
+
+Dialact taxid: 1744 
+
+```{r}
+# Propionibacterium_freudenreichii
+
+Propionibacterium_freudenreichii_PerSpacer_CRISPR_v1 <- read_spacers_data("Propionibacterium_freudenreichii")
+Propionibacterium_freudenreichii_PerSpacer_CRISPR_v2 <- add_reldist_leader(Propionibacterium_freudenreichii_PerSpacer_CRISPR_v1)
+
+
+
+Propionibacterium_freudenreichii_DR = read_DR_fasta_tibble("Propionibacterium_freudenreichii")
+
+#Propionibacterium_freudenreichii_Spacers = read_Spacers_fasta_tibble("Propionibacterium_freudenreichii")
+
+#Propionibacterium_freudenreichii_CasType_v1 <- read_casType_data("Propionibacterium_freudenreichii")
+
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Propionibacterium_freudenreichii_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Propionibacterium_freudenreichii_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Propionibacterium_freudenreichii_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Propionibacterium_freudenreichii_PerSpacer_CRISPR_v2)
+
+
+
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Propionibacterium_freudenreichii"))
+
+```
+#---------------------------------------------------------------------------------------------
+
+## Weissella Cibaria
+
+```{r}
+# Weissella_cibaria
+
+Weissella_cibaria_PerSpacer_CRISPR_v1 <- read_spacers_data("Weissella_cibaria", source = "NCBI")
+Weissella_cibaria_PerSpacer_CRISPR_v2 <- add_reldist_leader(Weissella_cibaria_PerSpacer_CRISPR_v1)
+
+
+
+Weissella_cibaria_DR = read_DR_fasta_tibble("Weissella_cibaria", source = "NCBI")
+
+#Weissella_cibaria_Spacers = read_Spacers_fasta_tibble("Weissella_cibaria", source = "NCBI")
+
+#Weissella_cibaria_CasType_v1 <- read_casType_data("Weissella_cibaria", source = "NCBI")
+
+
+
+
+#Dialact_spacers = bind_rows(Dialact_spacers, Weissella_cibaria_Spacers)
+Dialact_repeats = bind_rows(Dialact_repeats, Weissella_cibaria_DR)
+#Dialact_cas = bind_rows(Dialact_cas, Weissella_cibaria_CasType_v1)
+
+Dialact_CRISPRscope_spacers = bind_rows(Dialact_CRISPRscope_spacers, Weissella_cibaria_PerSpacer_CRISPR_v2)
+
+
+
+#Dialact_genes = bind_rows(Dialact_genes, read_gene_data("Weissella_cibaria", source = "NCBI"))
+
+#Dialact_CRISPRscope_spacers %>% filter(Organism == "Weissella_cibaria")
+
+```
+
+#---------------------------------------------------------------------------------------------
+
+
+##Other interesting organisms
+
+Dialact taxid: 1597 - Lactobacillus paracasei
+Dialact taxid: 152331 - Lactobacillus parabuchneri
+Dialact taxid: 1359 - Lactococcus lactis subsp. cremoris (DIALACT)
+
+
+Lactiplantibacillus_plantarum
+
+
+
+
+
+
+
+
+
+
+
+
+# ========================
+# >=============================
+#TODO: export spacers and repeat here
+#TODO: pause...
+# >=============================
+
+
+#=======================================
+# LOOP BACK Import CRISPRCasTyper results
+
+Include the inferred Cas-subtype for each repeat. 
+
+Important: Skip at the first execution (export Repeats and execute online with RepeatTyper first). 
+
+```{r}
+# Use the exported repeat fasta file and execute CRISPRCasTyper here: https://typer.crispr.dk/#/submit
+
+CRISPRscope_Dialact_cctyper_cas_types <- read_table2("C:/Users/thsch/Desktop/master_thesis_2/1_scripts/INPUT/CRISPRscope_cctyper_cas-types.tsv") %>%
+  mutate(Cas_prediction_probability = Prediction, Cas_subtype = Subtype) %>% 
+  select(-probability, -Prediction, -Subtype)
+#View(CRISPRscope_Dialact_cctyper_cas_types)
+```
+
+
+
+
+# LOOP BACK Import Cluster 
+
+Important: Skip at the first execution. Export Repeats and Spacers first and cluster with cd-hit-est and the desired (80%) similarity threshold with the script available in the 6_clustering folder of the project. 
+
+```{r}
+
+Clusters_CRISPRscope_spacers <- read_csv("C:/Users/thsch/Desktop/master_thesis_2/1_scripts/INPUT/Clusters_CRISPRscope_spacers_filtered.csv") %>% 
+  distinct(seq, cluster, identity)
+
+Clusters_CRISPRscope_repeats <- read_csv("C:/Users/thsch/Desktop/master_thesis_2/1_scripts/INPUT/Clusters_CRISPRscope_repeats_filtered.csv") %>% 
+  distinct(seq, cluster, identity)
+
+
+
+```
+
+
+
+
+#----------------------------------------------
+# Join 1 - Direct Repeats
+
+```{r}
+#
+# Join1: join the repeats to the main DF and clean column order
+# Next: join the CRISPRCasTyper cas types
+#
+
+CRISPRscope_tbl <- left_join(Dialact_CRISPRscope_spacers, Dialact_repeats, by = c("Organism", "Strain", "Scaffold", "Array")) %>%
+  mutate(DR_length = length, DR_seq = seq, Spacer_cluster = cluster, Spacer_is_ref = is_ref, Spacer = SpacerNb, ShortSpacerID = ShortID) %>% 
+  select(-length, -seq, -cluster, -is_ref, -SpacerNb, -ShortID,) %>% 
+  relocate(Spacer_cluster, .after = SpacerSeq) %>% 
+  relocate(DR_seq, .before = DR_cluster) %>% 
+  relocate(Spacer_is_ref, .after = Spacer_cluster) %>% 
+  relocate(Spacer, .after = Array) %>% 
+  relocate(Organism, .before = Strain) %>% 
+  relocate(ShortSpacerID, .after = ArrayID) %>% 
+  relocate(ShortArrayID, .after = ArrayID)
+
+
+#CRISPRscope_tbl %>% filter(Organism == "Lactobacillus_fermentum")
+#Dialact_repeats %>% filter(Organism == "Lactobacillus_casei")
+
+```
+#----------------------------------------------
+
+
+# LOOP BACK Join 2 - CAS from CRISPRCasTyper
+
+Joins the predicted cas-type and the prediction probability to the main dataset 
+
+```{r}
+CRISPRscope_tbl <- CRISPRscope_tbl %>% left_join(CRISPRscope_Dialact_cctyper_cas_types, by = c("DR_seq" = "Sequence"))
+
+```
+
+
+#----------------------------------------------
+# LOOP BACK Join 3 - Clusters from cd-hit-est
+
+1: remove old cluster related data -> previously clustering done on the server side -> unpractical, only organism-wide.
+```{r}
+
+CRISPRscope_tbl <- CRISPRscope_tbl %>% select(-Spacer_is_ref, -DR_is_ref, -Spacer_cluster, -DR_cluster)
+
+CRISPRscope_tbl <- CRISPRscope_tbl %>% 
+  left_join(Clusters_CRISPRscope_spacers, by = c("SpacerSeq" = "seq")) %>% 
+  mutate(cluster_spacer = cluster) %>% 
+  mutate(identity_spacer_cluster = identity) %>% 
+  select(-cluster, -identity) %>% 
+  relocate(cluster_spacer, .after = "SpacerSeq") %>% 
+  relocate(identity_spacer_cluster, .after = "cluster_spacer")
+
+
+CRISPRscope_tbl <- CRISPRscope_tbl %>% left_join(Clusters_CRISPRscope_repeats, by = c("DR_seq" = "seq")) %>% 
+  mutate(cluster_repeat = cluster) %>% 
+  mutate(identity_repeat_cluster = identity) %>% 
+  select(-cluster, -identity) %>% 
+  relocate(cluster_repeat, .after = "DR_seq") %>% 
+  relocate(identity_repeat_cluster, .after = "cluster_repeat")
+
+
+
+
+
+```
+
+
+
+#----------------------------------------------
+#----------------------------------------------
+# Quality filtering
+
+Remove spacers with a low evidence level and with N character.
+
+```{r}
+CRISPRscope_tbl_raw <- CRISPRscope_tbl
+CRISPRscope_tbl <- CRISPRscope_tbl %>% filter(EvidenceLvl > 3) %>% 
+  filter(SpacerSeq %>% str_detect("^[ACTGactg]+$")) %>% 
+  filter(DR_seq %>% str_detect("^[ACTGactg]+$"))
+
+
+
+CRISPRscope_tbl %>% filter(!grepl('N', DR_seq)) %>% select(DR_seq)
+
+
+CRISPRscope_tbl %>% filter(str_length(SpacerSeq) < 15) 
+
+```
+
+# Factors levels
+
+```{r}
+
+```
+
+
+
+
+# PRIORITY Quality verification
+Some species from the Dialact Database seem to be comming from outer Databases (DSM20072-i1-1)
+
+
+```{r}
+CRISPRscope_tbl %>% group_by(Strain) %>% summarise(Organism = Organism) %>% distinct() %>% count(Strain) %>% filter(n>1)
+
+CRISPRscope_tbl %>% group_by(Strain) %>% summarise(Organism = Organism) %>% distinct() %>% group_by(Strain) %>% summarise(Organism, NbOrganism = n()) %>% filter(NbOrganism > 1)
+```
+
+
+#----------------------------------------------
+# Available datasets
+
+```{r}
+Dialact_spacers
+Dialact_repeats
+#Dialact_cas # Not used, gives more than one cas type per scaffold wheras CCT gives one cas type per Repeat
+
+Dialact_CRISPRscope_spacers
+
+# Cas subtype detected by CRISPRCasTyper (CCT)
+CRISPRscope_Dialact_cctyper_cas_types
+
+# Genes detected by CRISPRCasFinder (CCF)
+Dialact_genes
+
+# With DR merged for each spacer
+CRISPRscope_tbl
+CRISPRscope_tbl %>% summarise(n_dr = n_distinct(SpacerSeq))
+CRISPRscope_tbl %>% summarise(n_dr = n_distinct(DR_seq))
+```
+
+#----------------------------------------------
+# Export Datasets
+
+## Export Main dataset
+```{r}
+# CSV format is heavier but usable everywhere
+#write.csv(CRISPRscope_tbl, file = "./OUTPUT/CRISPRscope_Dialact.csv")
+
+# Save an object to a file in RDS format is less space-consuming
+saveRDS(CRISPRscope_tbl, file = "./OUTPUT/CRISPRscope_tbl.rds")
+```
+
+## Export Repeats (tsv and fasta)
+NOTE: In the first part, all repeats are exported, including the ones with evidence level <4 !
+
+
+```{r}
+
+repeats_unique <- CRISPRscope_tbl %>% select(DR_seq) %>% distinct(DR_seq) 
+
+
+
+#TSV used by CRISPRCasTyper
+write.table(repeats_unique$DR_seq, "./OUTPUT/CRISPRscope_Dialact_unique_repeats_all.tsv",na = "", quote = FALSE, sep = "\t",row.names = FALSE, col.names = FALSE)
+
+repeats_unique <- repeats_unique %>% rowid_to_column("header")
+
+dfs <- data.frame(repeats_unique$header, repeats_unique$DR_seq)
+dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_repeats_all.fasta")
+
+
+#
+# Export only high quality repeats (used for clustering)
+#
+
+repeats_unique_filtered <- CRISPRscope_tbl %>% select(DR_seq) %>% rowid_to_column("header")
+dfs <- data.frame(repeats_unique_filtered$header, repeats_unique_filtered$DR_seq)
+dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_repeats_filtered.fasta")
+
+```
+
+## Export Spacers Fasta
+For clustering, export all distinct spacers and repeats (only filtered)
+```{r}
+# #
+# # Dialact_spacers adds all the spacers, whatever the evidence level. Thus it contains spacers that are eliminated after quality filtering.
+# #
+# spacer_unique <- Dialact_spacers %>% 
+#   select(seq) %>% 
+#   unique() 
+# 
+# 
+# dfs <- data.frame(spacer_unique$header, spacer_unique$seq)
+# dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_spacers_all.fasta")
+
+
+#
+# Export only high quality spacers (used for clustering)
+#
+
+spacers_unique_filtered <- CRISPRscope_tbl %>% select(SpacerSeq) %>% distinct(SpacerSeq) %>%  
+  rowid_to_column("header") %>% add_column(sufx = "genomic") %>% 
+  unite(header, c(header, sufx))
+
+dfs <- data.frame(spacers_unique_filtered$header, spacers_unique_filtered$SpacerSeq)
+dfs.fasta = dataframe2fas(dfs, file="./OUTPUT/CRISPRscope_spacers_filtered.fasta")
+
+
+
+```
+
+With ID
+
+
+```{r, eval = F}
+
+
+out2 <- CRISPRscope_tbl %>%
+  group_by(Organism, Strain, Scaffold, Array, Spacer) %>%
+  mutate(header = paste(Organism, Strain, Scaffold, Array, Spacer, sep = "_") ,
+         seq = SpacerSeq) %>%
+  ungroup %>%
+  select(header, seq)
+
+dfs <- data.frame(out2$header, out2$seq)
+dfs.fasta = dataframe2fas(dfs, file = "./OUTPUT/CRISPRscope_spacers_filtered.fasta")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

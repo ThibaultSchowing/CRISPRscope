@@ -1,0 +1,1046 @@
+---
+title: "2_CRISPRscope_metagenomic_data"
+author: "Thibault Schowing"
+date: "21/01/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Parsing of the CRASS outputs
+
+
+For each metagenome assembly with CRASS, various outputs are produced. 
+- spacers.fasta
+- DR.fasta
+- flankers.fasta
+- stats.csv
+
+The stats.csv gives useful informations on the general quantity of CRISPR arrays and their sizes. 
+
+
+# Various functions
+
+## Imports
+```{r ,results='hide', echo=FALSE}
+library(readr)
+library(tidyverse)
+library(plotly)
+
+#remotes::install_github("wilkelab/ggridges")
+library(ggridges)
+
+#devtools::install_github('Mikata-Project/ggthemr')
+library(ggthemr)
+
+#library(reticulate)
+
+
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+# BiocManager::install("Biostrings")
+
+library(Biostrings)
+
+# Converts dataframe to fasta file
+#install.packages("seqRFLP")
+library("seqRFLP")
+
+```
+
+## Directories
+
+```{r}
+
+repository <- "C:/Users/thsch/Desktop/master_thesis_2" # Main git repository. 
+google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+```
+
+
+
+
+
+## Utils
+```{r ,results='hide', echo=FALSE}
+
+
+# Get the methods available on DNAStringSet
+#methods(class = "DNAStringSet")
+
+
+#
+# Converts dna string set (dss) to dataframe 
+#
+dss2df <- function(dss) data.frame(length=width(dss), seq=as.character(dss), names=names(dss))
+
+#
+# Converts dna string set (dss) to tibble
+#
+dss2tibble <- function(dss) as_tibble(data.frame(length=width(dss), seq=as.character(dss), names=names(dss)))
+
+
+```
+
+# Data getters
+
+
+
+## Get SRA entries
+
+```{r,results='hide', echo=FALSE}
+#
+# Gets all CRASS data, sample by sample, adding information as project name, readcount, etc. 
+#
+get_sra_tibbles <- function(projectname, basefolder){
+  
+
+  
+  
+  # for a bioproject generate 3 tibbles: Spacers, DR and stats. Attention, CRISPRtools sanitized the names for the merged spacers (they are unique) but here they do collide. As the spacer's name is only a place in a graph, we won't care about it now. 
+  
+  # Spacers
+  # - DF with Length / seq / names / SRA ID / read count 
+  # 
+  # DR
+  # - DF with Length / seq / names / SRA ID / read count
+  #
+  # Stats
+  # - Consensus repeat / numbers numbers numbers / SRA ID / read count
+  
+  
+  #spacer_tbl_colnames <- c("length", "seq", "names", "SRA_ID", "reads_count")
+  spacer_tbl <- NULL
+  dr_tbl <- NULL
+  stats_tbl <- NULL
+  id_tbl <- NULL # just all the sra entries 
+  sra_sample <- NULL
+  
+  # FUnction to generate a big tibble with spacers and SRR id / readcount
+  
+  SRA_DIRECTORIES <- list.dirs(path=paste(basefolder, projectname, sep = ""), recursive=FALSE)
+  
+  for (sradir in SRA_DIRECTORIES){
+    print("Directory")
+    print(sradir)
+    
+    #
+    # ID
+    #
+    SRA_ID <- strsplit(sradir[[1]], "/")[[1]][5]
+    
+    #
+    # Read count
+    #
+    count_file_path <- file.path(paste(sradir, "/", projectname, ".", SRA_ID, ".readcount.txt", sep = ""))
+    print(count_file_path)
+    
+    
+    readcount <- as.numeric(readChar(count_file_path, file.info(count_file_path)$size))
+    #print(readcount)
+    
+    #
+    # Spacers (fasta to tibble)
+    #
+    spacer_file_path <- file.path(paste(sradir, "/", projectname, ".", SRA_ID, ".Spacers.fasta", sep = ""))
+    
+    tmp_fasta_tibble <- dss2tibble(readDNAStringSet(spacer_file_path))
+    
+    tmp_fasta_tibble <- tmp_fasta_tibble %>% 
+      mutate(SRA_ID = SRA_ID, reads_count = readcount)
+    
+    #print(length(tmp_fasta_tibble$seq))
+    
+    spacer_tbl = bind_rows(spacer_tbl, tmp_fasta_tibble)
+    
+    #print("spacer done")
+    
+    #
+    # DR (fasta to tibble)
+    #
+    dr_file_path <- file.path(paste(sradir, "/", projectname, ".", SRA_ID, ".DR.fasta", sep = ""))
+    
+    tmp_fasta_tibble <- dss2tibble(readDNAStringSet(dr_file_path))
+    
+    tmp_fasta_tibble <- tmp_fasta_tibble %>% 
+      mutate(SRA_ID = SRA_ID, reads_count = readcount)
+    
+    dr_tbl = bind_rows(dr_tbl, tmp_fasta_tibble)
+    
+    #print("DR done")
+    
+    #
+    # Stats (csv) Attention; name is csv but file is actually TSV
+    #
+    stats_file_path <- file.path(paste(sradir, "/", projectname, ".", SRA_ID, ".stats.csv", sep = ""))
+    tmp_tsv_stats_tibble <- read_tsv(stats_file_path, col_names = T)
+    
+    tmp_tsv_stats_tibble <- tmp_tsv_stats_tibble %>% 
+      mutate(SRA_ID = SRA_ID, reads_count = readcount)
+    
+    stats_tbl = bind_rows(stats_tbl, tmp_tsv_stats_tibble)
+    
+    
+    #print("stat done")
+    
+    #
+    # ID tibble: contains the SRA_ID and the readcount
+    #
+    tmp_id_tbl = tibble(`SRA_ID` = SRA_ID, `reads_count` = readcount)
+    id_tbl = bind_rows(id_tbl, tmp_id_tbl) 
+    
+    #
+    # sra sample
+    #
+    tmp_sample = tibble(`sra_sample` = SRA_ID)
+    sra_sample = bind_rows(sra_sample, tmp_sample)
+    
+    #print("id done")
+    
+  }# for each sample
+  
+  
+  # Operations on finished tibbles
+  
+  # id_tbl_empty: contains the SRA_IDs of the samples without CRISPRs
+  # id_tbl_crispr: contains the SRA_IDs of the samples with CRISPRs
+  # id_tbl_out: contains both 
+  
+  id_tbl_empty <- id_tbl %>% filter(!SRA_ID %in% stats_tbl$SRA_ID) %>% mutate(no_crispr = TRUE)
+  
+  #print(id_tbl_empty)
+  
+  id_tbl_crispr <- id_tbl %>% filter(!SRA_ID %in% id_tbl_empty$SRA_ID) %>% mutate(no_crispr = FALSE)
+  
+  #print(id_tbl_crispr)
+  
+  id_tbl_out <- bind_rows(id_tbl_crispr, id_tbl_empty)
+  
+  # SP
+  
+  spacer_tbl <- spacer_tbl %>% add_column(ProjectID = projectname, .before = "length") %>% 
+    relocate(SRA_ID, .after = ProjectID) %>% 
+    mutate(GID = str_extract(names, "G[0-9]+"), .after = SRA_ID) %>% 
+    mutate(SPID = str_extract(names, "SP[0-9]+"), .after = GID) %>% 
+    mutate(Coverage = str_extract(names, "[0-9]+$"), .after = SPID) %>% 
+    mutate(spacer_seq = seq) %>% select(-seq)
+     # Note: remame() has bugs with developpment version of rlang.
+  
+  # DR
+  
+  dr_tbl <- dr_tbl %>% add_column(ProjectID = projectname, .before = "length") %>% 
+    relocate(SRA_ID, .after = ProjectID) %>% 
+    mutate(GID = str_extract(names, "G[0-9]+"), .after = SRA_ID) %>%  
+    mutate(repeat_seq = seq) %>% select(-seq)
+  
+  
+  
+  # Stats
+  
+  
+  
+  stats_tbl <- stats_tbl %>% add_column(ProjectID = projectname, .before = "GID") %>% 
+    relocate(SRA_ID, .after = ProjectID)
+  
+  
+  
+  
+  id_tbl_out <- id_tbl_out %>% add_column(ProjectID = projectname, .before = "SRA_ID")
+  
+   ##
+  
+  id_tbl_out_test <- sra_sample %>% add_column(ProjectID = projectname)
+  
+  
+  
+  
+  return(list("spacers" = spacer_tbl, "dr" = dr_tbl, "stats" = stats_tbl, "id_tbl" = id_tbl_out, "id_tbl_all" = id_tbl_out_test))
+
+}
+
+
+
+```
+
+## TBR Matched Direct Repeats -->
+
+Get the repeats and corresponding organisms that were found in the CRISPRCasFinderDB.
+
+```{r,results='hide', echo=FALSE}
+# PENDING FOR CRISPRmapDB
+
+get_matched_cas_CCFDB <- function(projectname, basedirectory){
+
+  file_matched = paste(basedirectory, projectname, "/", projectname, "_matched_cas.csv", sep = "")
+
+  if(file.exists(file_matched)){
+    mc <- read_delim(file_matched,";", escape_double = F, trim_ws = T) %>%
+    mutate(ProjectID = projectname)
+    return(mc)
+  }
+  else{
+    return(NULL)
+  }
+
+}
+
+#PRJEB6952_matched_cas <- get_matched_cas_CCFDB("PRJEB6952",paste(repository, "/0_data/CRASS/" , sep=""))
+
+#PRJEB6952_matched_cas <- read_delim("C:/Users/thsch/Desktop/master_thesis_2/4_CRASS/PRJEB6952/PRJEB6952_matched_cas.csv", ";", escape_double = FALSE, trim_ws = TRUE)
+```
+
+
+
+
+
+# Data analysis functions
+
+
+## Number of spacers per million reads
+
+```{r,results='hide', echo=FALSE}
+# For each sample, number of spacers per million reads
+# Input: unmerged stats
+
+
+nb_spacers_norm <- function(input_tibble, projectname=""){
+  ggthemr_reset()
+    
+  d1 <- input_tibble %>% 
+    mutate(nspacers = `# spacers`) %>% 
+    mutate(SRA_ID = as.factor(SRA_ID)) %>% 
+    select(-`# spacers`) %>% 
+    group_by(SRA_ID) %>% 
+    summarise(ProjectID, total_spacers = sum(nspacers), million_reads = reads_count, normalized_total = sum(nspacers)/reads_count, n=n()) %>% 
+    distinct(SRA_ID, .keep_all = TRUE) %>% 
+    ungroup(SRA_ID)
+  
+  return(d1)
+}
+
+
+
+
+```
+
+## Sample w/wo CRISPR
+
+```{r,results='hide', echo=FALSE}
+#
+# Plots of the number of samples with/out CRISPR 
+# Input: PXXX_unmerged_ids
+#
+samples_crispr_presence <- function(input_tibble, projectname){
+  
+  asdf <- input_tibble %>% 
+    mutate(no_crispr = !no_crispr) %>% 
+    group_by(no_crispr) %>% 
+    summarise(n = n())
+  
+  
+  fig <- asdf %>% 
+    ggplot(aes(y = no_crispr, x = n, fill = no_crispr)) + 
+    geom_col(color="black") +
+    scale_fill_manual(values=c("grey", "orange")) + 
+    geom_text(aes(label=n ), hjust = 0, nudge_x = -2) +
+    labs(title = paste("Presence of CRISPR in the samples in project ", 
+                       projectname, 
+                       sep = ""), 
+         y="CRISPR present", 
+         x = "Number of samples") + 
+    labs(fill = "Contains CRISPR") + 
+    theme(legend.title = element_text(colour = "grey"))
+  
+  show(fig)
+}
+
+#samples_crispr_presence(PRJEB15432_unmerged_ids, "PRJEB15432")
+
+```
+
+
+
+
+
+
+#-----------------------------------
+
+#-----------------------------------
+
+# Main dataframes
+
+```{r}
+spacers_data <- tibble()
+repeats_data <- tibble()
+stats_data <- tibble()
+id_data <- tibble()
+matched_cas_data <- tibble()
+
+sample_data <- tibble()
+
+
+
+```
+
+
+
+
+#-----------------------------------
+## PRJEB32768
+
+Cotter lab CS study
+
+https://www.ncbi.nlm.nih.gov/bioproject/PRJEB32768
+https://www.nature.com/articles/s43016-020-0129-3
+
+Manually removed entry 3340807 -> empty folder generates error.
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+
+# Inputs
+
+projectname = "PRJEB32768"
+location = "../0_data/CRASS/"
+
+
+project_data <- get_sra_tibbles(projectname, location)
+
+# ---- Cas matches ----
+project_matched_cas <- get_matched_cas_CCFDB(projectname, location)
+
+
+# ---- Merge to main dataframes ---- 
+
+
+spacers_data = bind_rows(spacers_data, project_data$spacers)
+repeats_data = bind_rows(repeats_data, project_data$dr)
+stats_data = bind_rows(stats_data, project_data$stats)
+id_data = bind_rows(id_data, project_data$id_tbl)
+matched_cas_data = bind_rows(matched_cas_data, project_matched_cas)
+
+sample_data = bind_rows(sample_data, project_data$id_tbl_all)
+
+```
+
+
+
+
+#-----------------------------------
+## PRJNA286900
+
+https://www.ncbi.nlm.nih.gov/bioproject/286900
+
+Cotija cheese is a Mexican dairy product of spontaneous fermentation with a particular sensorial profile and an indisputable microbiological quality. In this study we analysed bacterial Cotija cheese metagenome in order to get a complete picture of bacterial diversity as well as metabolic potential of consortium related to flavour and odour compound production as well as gene related with bacteriocins production.
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+# Inputs
+
+projectname = "PRJNA286900"
+location = "../0_data/CRASS/"
+
+
+project_data <- get_sra_tibbles(projectname, location)
+
+# ---- Cas matches ----
+project_matched_cas <- get_matched_cas_CCFDB(projectname, location)
+
+
+# ---- Merge to main dataframes ---- 
+
+
+spacers_data = bind_rows(spacers_data, project_data$spacers)
+repeats_data = bind_rows(repeats_data, project_data$dr)
+stats_data = bind_rows(stats_data, project_data$stats)
+id_data = bind_rows(id_data, project_data$id_tbl)
+matched_cas_data = bind_rows(matched_cas_data, project_matched_cas)
+
+sample_data = bind_rows(sample_data, project_data$id_tbl_all)
+```
+
+
+
+
+
+#-----------------------------------
+## PRJNA603575
+
+https://www.ncbi.nlm.nih.gov/bioproject/?term=PRJNA603575
+
+food metagenome
+Yogurt and dietary supplement metagenomes
+
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+# Inputs
+
+projectname = "PRJNA603575"
+location = "../0_data/CRASS/"
+
+
+project_data <- get_sra_tibbles(projectname, location)
+
+# ---- Cas matches ----
+project_matched_cas <- get_matched_cas_CCFDB(projectname, location)
+
+
+# ---- Merge to main dataframes ---- 
+
+
+spacers_data = bind_rows(spacers_data, project_data$spacers)
+repeats_data = bind_rows(repeats_data, project_data$dr)
+stats_data = bind_rows(stats_data, project_data$stats)
+id_data = bind_rows(id_data, project_data$id_tbl)
+matched_cas_data = bind_rows(matched_cas_data, project_matched_cas)
+
+sample_data = bind_rows(sample_data, project_data$id_tbl_all)
+```
+
+#-----------------------------------
+## PRJEB23938
+
+https://www.ncbi.nlm.nih.gov/bioproject/PRJEB23938
+
+Metagenomic and Metatranscriptomic Analysis of the Microbial Community in Swiss-type Maasdam Cheese During Ripening
+
+ONLY METAGENOMIC SAMPLES WERE KEPT
+
+Manually removed sample ERR2227971 -> empty
+
+Actually doesn't contain any CRISPR, => empty stat file causes error, sample ID manually added in "low quality sample" section
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+# # Inputs
+# 
+# projectname = "PRJEB23938"
+# location = "../0_data/CRASS/"
+# 
+# 
+# 
+# project_data <- get_sra_tibbles(projectname, location)
+# 
+# # ---- Cas matches ----
+# project_matched_cas <- get_matched_cas_CCFDB(projectname, location)
+# 
+# 
+# # ---- Merge to main dataframes ----
+# 
+# 
+# spacers_data = bind_rows(spacers_data, project_data$spacers)
+# repeats_data = bind_rows(repeats_data, project_data$dr)
+# stats_data = bind_rows(stats_data, project_data$stats)
+# id_data = bind_rows(id_data, project_data$id_tbl)
+# matched_cas_data = bind_rows(matched_cas_data, project_matched_cas)
+# 
+# sample_data = bind_rows(sample_data, project_data$id_tbl_all)
+```
+
+#-----------------------------------
+## PRJEB30079
+
+https://www.ncbi.nlm.nih.gov/bioproject/PRJEB30079
+
+The antithrombotic properties of raw and pasteurised goat milk and cheeses Food Research International
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+# Inputs
+
+projectname = "PRJEB30079"
+location = "../0_data/CRASS/"
+
+
+project_data <- get_sra_tibbles(projectname, location)
+
+# ---- Cas matches ----
+project_matched_cas <- get_matched_cas_CCFDB(projectname, location)
+
+
+# ---- Merge to main dataframes ---- 
+
+
+spacers_data = bind_rows(spacers_data, project_data$spacers)
+repeats_data = bind_rows(repeats_data, project_data$dr)
+stats_data = bind_rows(stats_data, project_data$stats)
+id_data = bind_rows(id_data, project_data$id_tbl)
+matched_cas_data = bind_rows(matched_cas_data, project_matched_cas)
+
+sample_data = bind_rows(sample_data, project_data$id_tbl_all)
+```
+
+
+#-----------------------------------
+## CheeseRaclette
+
+
+
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+# Inputs
+
+projectname = "CheeseRaclette"
+location = "../0_data/CRASS/"
+
+
+project_data <- get_sra_tibbles(projectname, location)
+
+# ---- Cas matches ----
+project_matched_cas <- get_matched_cas_CCFDB(projectname, location)
+
+
+# ---- Merge to main dataframes ----
+
+
+spacers_data = bind_rows(spacers_data, project_data$spacers)
+repeats_data = bind_rows(repeats_data, project_data$dr)
+stats_data = bind_rows(stats_data, project_data$stats)
+id_data = bind_rows(id_data, project_data$id_tbl)
+matched_cas_data = bind_rows(matched_cas_data, project_matched_cas)
+
+sample_data = bind_rows(sample_data, project_data$id_tbl_all)
+```
+
+
+#-------------------------
+## 20201217_metagenomes
+
+Hard cheese starter cultures from gruyere, emmentaler, sbrinz
+Agroscope
+
+
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+# Inputs
+
+projectname = "20201217_metagenomes"
+location = "../0_data/CRASS/"
+
+
+
+# ---- Project data ----
+
+project_data <- get_sra_tibbles(projectname, location)
+project_matched_cas <- get_matched_cas_CCFDB(projectname, location)
+
+
+
+
+
+
+# ---- Merge to main dataframes ---- 
+
+
+spacers_data = bind_rows(spacers_data, project_data$spacers)
+repeats_data = bind_rows(repeats_data, project_data$dr)
+stats_data = bind_rows(stats_data, project_data$stats)
+id_data = bind_rows(id_data, project_data$id_tbl)
+matched_cas_data = bind_rows(matched_cas_data, project_matched_cas)
+
+
+sample_data = bind_rows(sample_data, project_data$id_tbl_all)
+
+```
+
+
+
+
+#-----------------------------------
+
+# Join DR to spacers 
+
+Join the direct repeats to the spacers.  
+
+
+
+
+```{r ,results='hide', message=FALSE, echo=FALSE, warning=FALSE}
+CRISPRscope_meta_tbl <- inner_join(spacers_data, repeats_data, by = c("ProjectID", "SRA_ID", "GID")) %>% 
+  mutate(spacer_length = length.x, repeat_length = length.y, read_count = reads_count.x) %>% 
+  select(-reads_count.y, -names.y, -length.x, -length.y, -reads_count.x, -names.x)
+head(CRISPRscope_meta_tbl)
+```
+
+
+
+#-----------------------------------
+# Quality filtering
+
+
+```{r}
+CRISPRscope_meta_tbl_raw <- CRISPRscope_meta_tbl
+
+CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl_raw %>% 
+  filter(Coverage > 1) %>%                            # Remove low coverage
+  filter(str_length(spacer_seq) > 15) %>%             # Remove spurious spacers
+  filter(str_length(spacer_seq) < 50) %>%             # Remove huge spacers (Munch et al)
+  filter(spacer_seq %>% str_detect("^[ACTGactg]+$")) %>%  # Originally, no spacer / repeat contain N's Must be a particularity of CRISPRCasFinder
+  filter(repeat_seq %>% str_detect("^[ACTGactg]+$"))
+
+
+
+# CRISPRscope_meta_tbl %>% filter(ProjectID == "CheeseRaclette") %>% distinct(SRA_ID)
+
+```
+
+# Low-high quality samples content
+mark low quality samples in id_data as samples without CRISPR
+
+```{r}
+id_data  #=> 203 rows 
+sample_data
+
+
+
+All_samples = sample_data
+
+# list of samples where good spacers are
+CRISPRscope_meta_high_quality <- CRISPRscope_meta_tbl %>% select(SRA_ID) %>% distinct()
+
+# elements present in "low quality" but not in "high" have to be added to id_data with no_crispr = true
+
+low_quality_or_empty = All_samples %>% 
+  filter(!sra_sample %in%  CRISPRscope_meta_high_quality$SRA_ID ) %>% 
+  add_row(sra_sample = "ERR2226381", ProjectID = "PRJEB23938") %>% 
+  add_row(sra_sample = "ERR2226382", ProjectID = "PRJEB23938") %>% 
+  add_row(sra_sample = "ERR2226383", ProjectID = "PRJEB23938") %>% 
+  add_row(sra_sample = "ERR2226384", ProjectID = "PRJEB23938") %>% 
+  add_row(sra_sample = "ERR2226385", ProjectID = "PRJEB23938") %>% 
+  add_row(sra_sample = "ERR2226386", ProjectID = "PRJEB23938") %>% 
+  add_column(CRISPR = FALSE) %>% 
+  mutate(SRA_ID = sra_sample) %>% select(-sra_sample) %>% 
+  relocate(SRA_ID, .after = "ProjectID") %>% 
+  relocate(CRISPR, .after = "SRA_ID")
+
+
+high_quality = CRISPRscope_meta_tbl %>% select(SRA_ID, ProjectID) %>% 
+  distinct() %>% 
+  add_column(CRISPR = TRUE)%>% 
+  relocate(SRA_ID, .after = "ProjectID") %>% 
+  relocate(CRISPR, .after = "SRA_ID")
+ 
+# no sample are in both          
+#intersect(low_quality_or_empty$sra_sample, high_quality$SRA_ID)
+
+# Merge the two df, use in CRISPR content barchart
+
+sample_crispr_content <- bind_rows(low_quality_or_empty, high_quality) %>% write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/CRISPRscope_meta_Project_Sample_list.csv", sep=""), col.names = TRUE)
+
+
+
+
+```
+
+
+
+# Import clusters 
+
+```{r, echo = F}
+Clusters_CRISPRscope_meta_spacers <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_meta_SP.csv", sep="")) %>% 
+  distinct(seq, cluster, identity)
+
+Clusters_CRISPRscope_meta_repeats <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_meta_DR.csv", sep="")) %>% 
+  distinct(seq, cluster, identity)
+
+
+```
+
+
+
+# Cluster 80%
+Remove old clustering info for spacers and repeats and add new ones (global, done with all repeats and spacers)
+```{r}
+CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl %>% 
+  left_join(Clusters_CRISPRscope_meta_spacers, by = c("spacer_seq" = "seq")) %>% 
+  mutate(cluster_spacer = cluster) %>% 
+  mutate(identity_spacer_cluster = identity) %>% 
+  select(-cluster, -identity) %>% 
+  relocate(cluster_spacer, .after = "spacer_seq") %>% 
+  relocate(identity_spacer_cluster, .after = "cluster_spacer")
+
+CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl %>% 
+  left_join(Clusters_CRISPRscope_meta_repeats, by = c("repeat_seq" = "seq")) %>% 
+  mutate(cluster_repeat = cluster) %>% 
+  mutate(identity_repeat_cluster = identity) %>% 
+  select(-cluster, -identity) %>% 
+  relocate(cluster_repeat, .after = "repeat_seq") %>% 
+  relocate(identity_repeat_cluster, .after = "cluster_repeat")
+
+
+```
+
+# Cluster 100%
+
+Note that the clustering was added before removing the spacers bigger than 72bp. 
+The clustering file is then containing additional potentially unused clusters.
+
+```{r}
+
+Clusters_CRISPRscope_spacers_identity <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep="")) %>% 
+  distinct(seq, cluster, identity) %>% select(-identity)
+
+Clusters_CRISPRscope_repeats_identity <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_REPEATS.csv", sep="")) %>% 
+  distinct(seq, cluster, identity) %>% select(-identity)
+
+
+CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl %>% 
+  left_join(Clusters_CRISPRscope_spacers_identity, by = c("spacer_seq" = "seq")) %>% 
+  mutate(cluster_spacer_identity = cluster) %>% 
+  select(-cluster) %>% 
+  relocate(cluster_spacer_identity, .after = "cluster_spacer")
+
+
+CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl %>% 
+  left_join(Clusters_CRISPRscope_repeats_identity, by = c("repeat_seq" = "seq")) %>% 
+  mutate(cluster_repeat_identity = cluster) %>% 
+  select(-cluster) %>% 
+  relocate(cluster_repeat_identity, .after = "cluster_repeat")
+
+```
+
+
+#-----------------------------------
+# Spacers per milion reads
+
+
+
+```{r}
+CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl %>%
+  group_by(SRA_ID) %>%
+  summarise(SRA_ID, total_spacers = n_distinct(cluster_spacer_identity)) %>% 
+  distinct() %>% 
+  left_join(CRISPRscope_meta_tbl, by = c("SRA_ID")) %>% 
+  relocate(SRA_ID, .after="ProjectID") %>% 
+  relocate(total_spacers, .after="read_count") %>% 
+  group_by(SRA_ID) %>% 
+  mutate(spacer_per_milread = (total_spacers/read_count)*1000000) %>% 
+  relocate(spacer_per_milread, .after="read_count") %>% 
+  ungroup()
+```
+
+#-----------------------------------
+# Repeats per milion reads
+
+
+
+```{r}
+CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl %>%
+  group_by(SRA_ID) %>%
+  summarise(SRA_ID, total_repeats = n_distinct(cluster_repeat_identity)) %>% 
+  distinct() %>% 
+  left_join(CRISPRscope_meta_tbl, by = c("SRA_ID")) %>% 
+  relocate(SRA_ID, .after="ProjectID") %>% 
+  relocate(total_repeats, .after="read_count") %>% 
+  group_by(SRA_ID) %>% 
+  mutate(repeat_per_milread = (total_repeats/read_count)*1000000) %>% 
+  relocate(repeat_per_milread, .after="read_count") %>% 
+  ungroup()
+```
+
+
+
+
+
+#-----------------------------------
+# LOOP BACK Import CRISPRCasTyper results
+
+Use the exported repeat tsv file to infer the cas subtypes using CRISPRCasTyper -> Repeat_typer tool 
+```{r}
+CRISPRscope_meta_cctyper_cas_types <- read_table2(paste(repository, "/0_data/IMPORT/cctyper/CRISPRscope_meta_cctyper_cas-types.tsv", sep="")) %>%
+  mutate(Prediction_probability = Prediction) %>% 
+  select(-probability, -Prediction)
+#View(CRISPRscope_meta_cctyper_cas_types)
+
+#CRISPRscope_meta_cctyper_cas_types %>% summarise(ndis_seq = n_distinct(Sequence), nseq = n())
+
+
+# Join the CRISPRscope_meta_cctyper_cas_types to the CRISPRscope_meta_tbl 
+
+CRISPRscope_meta_tbl$repeat_seq <- as.factor(CRISPRscope_meta_tbl$repeat_seq)
+CRISPRscope_meta_cctyper_cas_types$Sequence <- as.factor(CRISPRscope_meta_cctyper_cas_types$Sequence)
+
+
+CRISPRscope_meta_tbl <- left_join(CRISPRscope_meta_tbl, CRISPRscope_meta_cctyper_cas_types, by = c("repeat_seq" = "Sequence"))
+CRISPRscope_meta_tbl
+
+```
+#-----------------------------------
+
+
+
+
+
+
+
+
+
+#-----------------------------------
+
+# Sample filtering
+
+Refine samples according to metadata. Here we remove the samples taken specifically from the rind of cheese instead of core. 
+
+```{r}
+CRISPRscope_meta_METADATA <- read_delim(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),"\t", escape_double = FALSE, trim_ws = TRUE)
+
+# Get the samples from Rind
+rind_list <- CRISPRscope_meta_METADATA  %>% filter(`Sample_location (core rind)` == "Rind") %>% select(ProjectID, SRA_ID)
+# => 22 samples from PRJEB32768
+
+# Remove samples from main dataset according to metadata
+CRISPRscope_meta_tbl_filtered <- CRISPRscope_meta_tbl %>% filter(!SRA_ID %in% rind_list$SRA_ID)
+
+
+```
+#-----------------------------------
+
+
+
+# Available datasets
+
+
+```{r}
+
+# NO QUALITY FILTERING ON THESE
+# spacers_data 
+# repeats_data 
+# stats_data 
+id_data 
+# matched_cas_data 
+
+# CRISPRCasTyper - Repeat -> cas type identification
+CRISPRscope_meta_cctyper_cas_types
+
+# Repeats added to spacers_data
+CRISPRscope_meta_tbl
+CRISPRscope_meta_tbl_filtered
+
+CRISPRscope_meta_tbl %>% summarise(n_dr = n_distinct(spacer_seq))
+
+```
+
+#-----------------------------------
+# Export 
+
+## Full Datasets
+
+```{r}
+
+saveRDS(id_data, file = paste(repository, "/0_data/CRISPRscope_meta_results/id_data.rds", sep=""))
+
+
+# CSV format is heavier but usable everywhere
+write.csv(CRISPRscope_meta_tbl, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl.csv", sep=""))
+
+
+# Save an object to a file in RDS format is less space-consuming
+saveRDS(CRISPRscope_meta_tbl, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl.rds", sep=""))
+
+
+
+# CSV format is heavier but usable everywhere
+write.csv(CRISPRscope_meta_tbl_filtered, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.csv", sep=""))
+
+
+# Save an object to a file in RDS format is less space-consuming
+saveRDS(CRISPRscope_meta_tbl_filtered, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
+
+
+```
+
+
+
+## DR - SP - DR
+
+Create a fasta file containing the repeat - spacers - repeat sequences for each spacer to be mapped to the reads. The goal here is to see the proportion of spacer reads that actually might be from the protospacers. 
+
+
+
+```{r, eval=F}
+#
+# For each project - sample - group: 
+#     create DR - SP - DR sequences uniquely named
+#
+
+out1 <- CRISPRscope_meta_tbl %>% 
+  group_by(ProjectID, SRA_ID, GID) %>% 
+  mutate(header = paste(ProjectID, SRA_ID, GID, SPID, Coverage, sep = "_") , 
+         seq = paste(repeat_seq, spacer_seq, repeat_seq, sep = "")) %>% 
+  ungroup %>% 
+  select(header, seq) 
+
+
+df <- data.frame(out1$header, out1$seq)
+df.fasta = dataframe2fas(df, file=paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_DR_SP_DR.fasta", sep=""))
+
+
+```
+
+
+
+
+
+## Export Spacers 
+
+
+
+```{r, eval = F}
+
+
+out2 <- CRISPRscope_meta_tbl_filtered %>%
+  group_by(ProjectID, SRA_ID, GID) %>%
+  mutate(header = paste(ProjectID, SRA_ID, GID, SPID, Coverage, sep = "_") ,
+         seq = spacer_seq) %>%
+  ungroup %>%
+  select(header, seq)
+
+dfs <- data.frame(out2$header, out2$seq)
+dfs.fasta = dataframe2fas(dfs, file = paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_meta_spacers.fasta", sep=""))
+
+
+```
+
+## Export Repeats 
+
+
+```{r}
+
+
+repeats_unique <- CRISPRscope_meta_tbl_filtered %>% select(repeat_seq) %>% distinct(repeat_seq)
+repeats_unique <- repeats_unique$repeat_seq
+
+out_repeat <- CRISPRscope_meta_tbl_filtered %>% 
+  mutate(header = paste(ProjectID, SRA_ID, GID, sep = "_"), seq = repeat_seq) %>%
+  select(header, seq) %>% 
+  distinct(seq, .keep_all = TRUE)
+
+dfs <- data.frame(out_repeat$header, out_repeat$seq)
+dfs.fasta = dataframe2fas(dfs, file=paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_meta_repeats.fasta", sep=""))
+
+
+# For CRISPR cas typer (Copy paste with \n )
+write.table(repeats_unique, paste(repository, "/0_data/EXPORT/CRISPRscope_meta_unique_repeats.tsv", sep=""), na = "", quote = FALSE, sep = "\t",row.names = FALSE, col.names = FALSE)
+
+```
+
+Repeats were processed on https://cctyper.crispr.dk/#/submit
+Check: https://www.liebertpub.com/doi/abs/10.1089/crispr.2020.0059
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

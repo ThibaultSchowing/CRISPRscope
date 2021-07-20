@@ -1,0 +1,132 @@
+---
+title: "4_metaphlan_genomic"
+author: "Thibault Schowing"
+date: "06/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Packages and global variables
+
+```{r}
+library(tidyverse)
+library(readr)
+library(plotly)
+# for iteration and fonctionnal programming
+library(purrr)
+# for nesting dataframe
+library(tidyr)
+# https://community.rstudio.com/t/is-there-a-tidy-way-to-iterate-a-data-frame-tibble-and-produce-side-effects-based-on-the-value-of-each-row/52382/4
+library(slider)
+
+
+
+```
+
+
+# Metaphlan output parsing
+
+```{r}
+allStrains_metaphlan <- read_delim("C:/Users/thsch/Desktop/master_thesis_2/0_data/Metaphlan_results/allStrains_metaphlan.txt", 
+                                   "\t", 
+                                   escape_double = FALSE, 
+                                   col_names = FALSE, 
+                                   trim_ws = TRUE) %>% 
+  mutate(ProjectID = X1, Sample = X2, Species = X3, RelAbundance = X4) %>% 
+  select(ProjectID, Sample, Species, RelAbundance) %>% 
+  mutate(ProjectID = replace(ProjectID, ProjectID == "20201217_metagenomes", "Agroscope")) %>% 
+  mutate(Species = gsub("s__", "", Species)) 
+
+allStrains_metaphlan
+
+# TODO: why now only 196 species and not 242 ?? 
+allStrains_metaphlan %>% summarise(nb_species = n_distinct(Species))
+
+unique_species <- unique(allStrains_metaphlan$Species)
+write.table(unique_species, file = "./0_data/Metaphlan_results/metaphlan_unique_species.csv", row.names = F, col.names = F, quote = F, eol = "\n")
+
+# yes, exactly. the species with prevelance>0.5% and median relative abundance>0.25%
+
+
+
+# ATTENTION: Might need to mannually replace CRLF to LF with Np++
+
+
+unique(allStrains_metaphlan$ProjectID)
+
+
+```
+
+
+
+
+Plots Idea: 
+
+Number of sample per project
+Number of species per sample
+
+
+```{r}
+
+
+
+allStrains_metaphlan %>% 
+  mutate(total_nb_sample = n_distinct(Sample)) %>% 
+  group_by(Species) %>% 
+  summarise(Species, Prevalence = n()/total_nb_sample, Count = n(), median_relative_abundance = median(RelAbundance)) %>% 
+  unique() %>% 
+  filter(Prevalence > 0.005) %>% 
+  filter(median_relative_abundance > 0.25) %>% 
+  arrange(desc(Prevalence), desc(median_relative_abundance))
+
+  
+#  filter(Species == "Lactobacillus_delbrueckii")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
