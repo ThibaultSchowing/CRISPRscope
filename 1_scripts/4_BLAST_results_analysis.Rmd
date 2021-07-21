@@ -8,6 +8,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+# WIP - Transfer all BLAST results analysis here for clarity
 
 # Import packages
 ```{r}
@@ -34,8 +35,8 @@ library("magick")
 
 library("seqRFLP") # dataframe2fas
 
-if(!require(devtools)) install.packages("devtools")
-devtools::install_github("kassambara/ggpubr")
+# if(!require(devtools)) install.packages("devtools")
+# devtools::install_github("kassambara/ggpubr")
 library(ggpubr)
 
 
@@ -44,6 +45,12 @@ library(ggpubr)
 ```
 
 
+```{r}
+
+repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
+google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+data_folder <- "C:/Users/thsch/Desktop/0_data"
+```
 
 
 
@@ -60,12 +67,12 @@ library(ggpubr)
 
 # # IMPORTED FROM Eggnog PROTEIN HITS -> Taxid = Virus
 # # - 
-# load(paste(repository, "/0_data/IMPORT_EXPORT/bacterial_viral_protein_hits_list", sep=""))
+# load(paste(data_folder, "/IMPORT_EXPORT/bacterial_viral_protein_hits_list", sep=""))
 
 #--------------------------------------
 # IMG/VR
 
-CRISPRblast_IMGVR_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_IMGVR_vincent.txt", sep=""), 
+CRISPRblast_IMGVR_2 <- read_delim(paste(data_folder, "/BLAST/CRISPRblast_IMGVR_vincent.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
                                                "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) %>% 
   mutate(database = "IMGVR") %>% 
@@ -76,7 +83,7 @@ CRISPRblast_IMGVR_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_I
 #--------------------------------------
 # PLSDB
 
-CRISPRblast_PLSDB_2 <- read_delim(paste(repository, "/0_data/IMPORT/PLSDB_Hits/CRISPRblast_plasmid.txt", sep=""), 
+CRISPRblast_PLSDB_2 <- read_delim(paste(data_folder, "/IMPORT/PLSDB_Hits/CRISPRblast_plasmid.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", 
                                                "qend", "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) %>% 
   mutate(database = "PLSDB") %>% 
@@ -86,7 +93,7 @@ CRISPRblast_PLSDB_2 <- read_delim(paste(repository, "/0_data/IMPORT/PLSDB_Hits/C
 #--------------------------------------
 # NCBI non redundant nucleotide collection
 
-CRISPRblast_nt_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_nt_vincent.txt", sep=""), 
+CRISPRblast_nt_2 <- read_delim(paste(data_folder, "/BLAST/CRISPRblast_nt_vincent.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
                                                "sstart", "send", "evalue", "bitscore", "stitle", "slen", 
                                                "staxid", "ssciname", "sskingdom", "staxids"), trim_ws = TRUE) %>% 
@@ -101,7 +108,7 @@ CRISPRblast_nt_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_nt_v
 
 
 
-CRISPRblast_nt_2 %>% write_csv(file=paste(repository, "/0_data/IMPORT_EXPORT/Blast_nt_results_categories.csv", sep=""))
+CRISPRblast_nt_2 %>% write_csv(file=paste(data_folder, "/IMPORT_EXPORT/Blast_nt_results_categories.csv", sep=""))
 
 
 
@@ -182,7 +189,7 @@ Due to failures on entrez' side, a set of proteins sequences couldn't be retreiv
 
 GENERATE QUERY for Entrez
 ```{r}
-CRISPRblast_nr_03 <- read_delim(paste(repository, "/0_data/IMPORT/Blast_nr_hits/CRISPRblast_nr_03.txt", sep=""), 
+CRISPRblast_nr_03 <- read_delim(paste(data_folder, "/IMPORT/Blast_nr_hits/CRISPRblast_nr_03.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
                                                "sstart", "send", "evalue", "bitscore", "stitle", "slen"), 
     trim_ws = TRUE)
@@ -194,17 +201,17 @@ BLASTnr_sseqid_qseqid <- CRISPRblast_nr_03 %>% select(qseqid,sseqid) %>%
   separate(sseqid, into = c("1" ,"DB","accessionID", "2"), sep = "[|]") %>%
   select(DB,accessionID, qseqid)
 
-BLASTnr_sseqid_qseqid %>% write_delim(file = paste(repository, "/0_data/EXPORT/BLASTnr_accession_list.txt", sep=""), col_names = F, delim="\n")
+BLASTnr_sseqid_qseqid %>% write_delim(file = paste(data_folder, "/EXPORT/BLASTnr_accession_list.txt", sep=""), col_names = F, delim="\n")
 
 # Get failed attempts -> Retry on Entrez-batch -> all failed to be retrieved = 1984 entries
-#entrez_batch_fail_1 %>% write_delim(file = paste(repository, "/0_data/BLASTnr/BLASTnr_accession_list_fail_1.txt", sep=""), col_names = F, delim="\n")
+#entrez_batch_fail_1 %>% write_delim(file = paste(data_folder, "/BLASTnr/BLASTnr_accession_list_fail_1.txt", sep=""), col_names = F, delim="\n")
 
 ```
 
 Protein fasta sequences were then downloaded from NCBI (via entrez results) and sent to Eggnog-mapper (http://eggnog-mapper.embl.de/)
 
 ```{r}
-MM_ug5vlsop_emapper_annotations <- read_delim(paste(repository, "/0_data/Eggnog_results/MM_ug5vlsop.emapper.annotations.tsv", sep=""), 
+MM_ug5vlsop_emapper_annotations <- read_delim(paste(data_folder, "/Eggnog_results/MM_ug5vlsop.emapper.annotations.tsv", sep=""), 
     "\t", escape_double = FALSE, trim_ws = TRUE, 
     skip = 4)  %>%  dplyr::slice(1:(n()-3))
 #View(MM_ug5vlsop_emapper_annotations)
@@ -278,7 +285,7 @@ unassigned_hits_protein_annot_noviral <- unassigned_hits_protein_annot %>%
 unassigned_hits_protein_annot_noviral %>% 
   select(accessionID1) %>% 
   arrange(accessionID1) %>% distinct() %>% 
-  write_delim(file = paste(repository, "/0_data/EXPORT/unassigned_hits_protein_annot_noviral.lst", sep=""), col_names = F)
+  write_delim(file = paste(data_folder, "/EXPORT/unassigned_hits_protein_annot_noviral.lst", sep=""), col_names = F)
 
 
 
@@ -384,7 +391,7 @@ hit_type_order_2 <- c("No hit" ,"Bacterial", "Plasmid", "Viral")
 CRISPRscope_blast_cluster_hit_type_2_completed %>% filter(final_hit == "nt hit") %>% 
   left_join(CRISPRblast_nt_2 %>% select(qseqid, sseqid, stitle), by=c("cluster" = "qseqid")) %>%
   separate(sseqid, into = c("DB1","accessionID1", "DB2", "accessionID2"), sep = "[|]", remove = F) %>% 
-  write_csv(file = paste(repository, "/0_data/EXPORT/BLAST_Nohit_target_id.csv", sep=""))
+  write_csv(file = paste(data_folder, "/EXPORT/BLAST_Nohit_target_id.csv", sep=""))
 
 ```
 

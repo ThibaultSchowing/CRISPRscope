@@ -42,8 +42,9 @@ library("seqRFLP")
 
 ```{r}
 
-repository <- "C:/Users/thsch/Desktop/master_thesis_2" # Main git repository. 
+repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
 google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+data_folder <- "C:/Users/thsch/Desktop/0_data"
 ```
 
 
@@ -55,13 +56,13 @@ google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_Stage
 # TBR ?
 #CRISPRscope_meta_tbl <- readRDS(file = "../0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl.rds")
 
-CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
-id_data = readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/id_data.rds", sep=""))
+CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
+id_data = readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/id_data.rds", sep=""))
 
 
 # Metaphlan results
 
-allStrains_metaphlan <- read_delim(paste(repository, "/0_data/Metaphlan_results/allStrains_metaphlan.txt", sep=""), 
+allStrains_metaphlan <- read_delim(paste(data_folder, "/Metaphlan_results/allStrains_metaphlan.txt", sep=""), 
                                    "\t", 
                                    escape_double = FALSE, 
                                    col_names = FALSE, 
@@ -119,13 +120,13 @@ CRISPRscope_meta_tbl_filtered %>% select(spacer_seq) %>% mutate(l = str_length(s
 
 ```{r}
 # All samples with and without CRISPR. 
-sample_crispr_content <- CRISPRscope_meta_Project_Sample_list <- read_delim(paste(repository, "/0_data/IMPORT_EXPORT/CRISPRscope_meta_Project_Sample_list.csv", sep=""), 
+sample_crispr_content <- CRISPRscope_meta_Project_Sample_list <- read_delim(paste(data_folder, "/IMPORT_EXPORT/CRISPRscope_meta_Project_Sample_list.csv", sep=""), 
     ",", escape_double = FALSE, trim_ws = TRUE)
 
 
 # Metadata. Goal here is to remove the 22 samples from Rind of PRJEB32768
 # Attention to encoding and separator. 
-CRISPRscope_meta_METADATA <- read_delim(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),"\t", escape_double = FALSE, trim_ws = TRUE)
+CRISPRscope_meta_METADATA <- read_delim(paste(data_folder, "/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),"\t", escape_double = FALSE, trim_ws = TRUE)
 
 # Get the samples from Rind
 rind_list <- CRISPRscope_meta_METADATA  %>% filter(`Sample_location (core rind)` == "Rind") %>% select(ProjectID, SRA_ID)
@@ -153,20 +154,20 @@ sample_crispr_content %>% dplyr::count(CRISPR)
 # Metadata 
 
 correction of manual metadata TMP by joining the crispr-less samples that were previously removed / ignored
-```{r, eval=FALSE}
+```{r, eval=T}
 # 
-CRISPRscope_meta_Project_Sample_MANUAL_METADATA <- read_delim(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),
+CRISPRscope_meta_Project_Sample_MANUAL_METADATA <- read_delim(paste(data_folder, "/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),
     "\t", escape_double = FALSE, trim_ws = TRUE) %>% 
   mutate(Animal = gsub("cow", "Cow", Animal))%>% 
   mutate(Milk = gsub("raw", "Raw", Milk))
 
 
 metaData_updated <- sample_crispr_content %>%
-  left_join(CRISPRscope_meta_Project_Sample_MANUAL_METADATA, by = c("ProjectID", "SRA_ID")) %>%
-  select(-X1.y, -CRISPR.y) %>% dplyr::rename(contains_crispr = CRISPR.x) %>% 
+  left_join(CRISPRscope_meta_Project_Sample_MANUAL_METADATA %>% renameSamples(), by = c("ProjectID", "SRA_ID")) %>%
+  select(-...1.y, -CRISPR.y) %>% dplyr::rename(contains_crispr = CRISPR.x) %>% 
   arrange(ProjectID, SRA_ID)
 
-metaData_updated %>% write.csv(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_updated.csv", sep=""))
+metaData_updated %>% write.csv(paste(data_folder, "/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_updated.csv", sep=""))
 
 ```
 
@@ -473,15 +474,15 @@ plt_castype <- CRISPRscope_meta_tbl_filtered %>%
   ylab("Cas-subtype")
 
 
-ggsave(
-  plot = plt_castype,
-  file = "./IMG/report/13_Cas-Subtypes_bioproject.pdf",
-  bg = "white",
-  width = 25,
-  height = 15,
-  units = "cm",
-  dpi = 800
-)
+# ggsave(
+#   plot = plt_castype,
+#   file = "./IMG/report/13_Cas-Subtypes_bioproject.pdf",
+#   bg = "white",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
 
 plt_castype
 
@@ -620,10 +621,10 @@ Question: Do you know if the repeats you find in the metagenome occur in multipl
 
 ```{r}
 CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, cluster_repeat_identity, cluster_repeat) %>% distinct() %>% 
-  write.csv(file = paste(repository, "/0_data/EXPORT/metagenome_repeats_by_projects.csv", sep=""))
+  write.csv(file = paste(data_folder, "/EXPORT/metagenome_repeats_by_projects.csv", sep=""))
 
 CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, cluster_spacer_identity, cluster_spacer) %>% distinct() %>% 
-  write.csv(file = paste(repository, "/0_data/EXPORT/metagenome_spacers_by_projects.csv", sep=""))
+  write.csv(file = paste(data_folder, "/EXPORT/metagenome_spacers_by_projects.csv", sep=""))
 ```
 
 
@@ -774,9 +775,9 @@ paste -d '\t' ./allSamples_spacer_coverage_short.bed ~/allSamples_spacer_coverag
 ##-----------------------------------------------
 
 
-CRISPR_spacer_coverage_start <- read_delim(paste(repository, "/0_data/IMPORT/allSamples_coverages_final.bed", sep=""), "\t", escape_double = FALSE, trim_ws = TRUE)
+CRISPR_spacer_coverage_start <- read_delim(paste(data_folder, "/IMPORT/allSamples_coverages_final.bed", sep=""), "\t", escape_double = FALSE, trim_ws = TRUE)
 
-reads4normalization <- read_delim(paste(repository, "/0_data/IMPORT/reads4normalization.txt", sep=""),  "\t", escape_double = FALSE, col_names = c("bioproject","sample","readNumber"), trim_ws = TRUE)
+reads4normalization <- read_delim(paste(data_folder, "/IMPORT/reads4normalization.txt", sep=""),  "\t", escape_double = FALSE, col_names = c("bioproject","sample","readNumber"), trim_ws = TRUE)
 
 CRISPR_spacer_coverage_cleaned <- CRISPR_spacer_coverage_start %>% filter(spacer_cov!=0 & protospacer_cov!=0)
 dim(CRISPR_spacer_coverage_cleaned)
@@ -793,7 +794,7 @@ CRISPR_spacer_coverage$protospacer_CPM <- 1000000*(CRISPR_spacer_coverage$protos
 
 summary(CRISPR_spacer_coverage)
 
-CRISPR_spacer_coverage %>% write_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""))
+CRISPR_spacer_coverage %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""))
 
 
 ```
@@ -870,15 +871,15 @@ plot <-
   #facet_wrap(~Subtype)
 
 
-ggsave(
-  plot = plot,
-  file = "./IMG/report/15_SpacerProtospacerAbundance.pdf",
-  bg = "white",
-  width = 15,
-  height = 25,
-  units = "cm",
-  dpi = 800
-)
+# ggsave(
+#   plot = plot,
+#   file = "./IMG/report/15_SpacerProtospacerAbundance.pdf",
+#   bg = "white",
+#   width = 15,
+#   height = 25,
+#   units = "cm",
+#   dpi = 800
+# )
 
 # ggsave(
 #   plot = plot,
@@ -1062,6 +1063,8 @@ diversity. Count spacer reads per sample - classify
 # metaData_updated
 # CRISPR_spacer_coverage
 
+
+
 meta_readcount <- left_join(CRISPR_spacer_coverage, metaData_updated, by=c("sample" = "SRA_ID")) %>% 
   filter(spacer_CPM < 7500) # remove extreme values
 
@@ -1082,7 +1085,7 @@ meta_readcount %>% select(sample) %>% distinct()
 #   geom_density_ridges(aes(x=spacer_CPM, y=Milk)) +
 #   geom_jitter(aes(x=spacer_CPM, y=Cheese_type), size = 0.2) 
 
-meta_readcount %>% select(-X1.x) %>% filter(Cheese_type != "NA") %>% 
+meta_readcount %>% select(-...1.x) %>% filter(Cheese_type != "NA") %>% 
   ggplot() + 
   geom_density_ridges(aes(x=spacer_CPM, y=Cheese_type)) + 
   geom_jitter(aes(x=spacer_CPM, y=Cheese_type), size = 0.2) +
@@ -1170,7 +1173,7 @@ Spacer_per_sample <- CRISPRscope_meta_tbl_filtered %>%
   mutate(across(!cluster_spacer_identity, function(x) !grepl("^0$", x) ))
 
 Spacer_per_sample %>% 
-  write.csv(file = paste(repository, "/0_data/EXPORT/cluster_by_sample_spread.csv", sep=""), quote = F, row.names = FALSE, col.names = TRUE)
+  write.csv(file = paste(data_folder, "/EXPORT/cluster_by_sample_spread.csv", sep=""), quote = F, row.names = FALSE, col.names = TRUE)
 
 
 Spacer_per_sample %>% gather(key = "sample", value = "value", -cluster_spacer_identity) %>% 

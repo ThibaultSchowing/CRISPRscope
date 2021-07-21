@@ -54,8 +54,9 @@ library("seqRFLP")
 
 ```{r}
 
-repository <- "C:/Users/thsch/Desktop/master_thesis_2" # Main git repository. 
+repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
 google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+data_folder <- "C:/Users/thsch/Desktop/0_data"
 ```
 
 
@@ -128,7 +129,9 @@ get_sra_tibbles <- function(projectname, basefolder){
     #
     # ID
     #
-    SRA_ID <- strsplit(sradir[[1]], "/")[[1]][5]
+    SRA_ID <- strsplit(sradir[[1]], "/")[[1]][8]
+    print("SRA_ID:")
+    print(SRA_ID)
     
     #
     # Read count
@@ -285,7 +288,7 @@ get_matched_cas_CCFDB <- function(projectname, basedirectory){
 
 }
 
-#PRJEB6952_matched_cas <- get_matched_cas_CCFDB("PRJEB6952",paste(repository, "/0_data/CRASS/" , sep=""))
+#PRJEB6952_matched_cas <- get_matched_cas_CCFDB("PRJEB6952",paste(data_folder, "/CRASS/" , sep=""))
 
 #PRJEB6952_matched_cas <- read_delim("C:/Users/thsch/Desktop/master_thesis_2/4_CRASS/PRJEB6952/PRJEB6952_matched_cas.csv", ";", escape_double = FALSE, trim_ws = TRUE)
 ```
@@ -401,7 +404,8 @@ Manually removed entry 3340807 -> empty folder generates error.
 # Inputs
 
 projectname = "PRJEB32768"
-location = "../0_data/CRASS/"
+location = paste(data_folder, "/CRASS/", sep="")
+location = paste(data_folder, "/CRASS/", sep="")
 
 
 project_data <- get_sra_tibbles(projectname, location)
@@ -437,7 +441,7 @@ Cotija cheese is a Mexican dairy product of spontaneous fermentation with a part
 # Inputs
 
 projectname = "PRJNA286900"
-location = "../0_data/CRASS/"
+location = paste(data_folder, "/CRASS/", sep="")
 
 
 project_data <- get_sra_tibbles(projectname, location)
@@ -475,7 +479,7 @@ Yogurt and dietary supplement metagenomes
 # Inputs
 
 projectname = "PRJNA603575"
-location = "../0_data/CRASS/"
+location = paste(data_folder, "/CRASS/", sep="")
 
 
 project_data <- get_sra_tibbles(projectname, location)
@@ -513,7 +517,7 @@ Actually doesn't contain any CRISPR, => empty stat file causes error, sample ID 
 # # Inputs
 # 
 # projectname = "PRJEB23938"
-# location = "../0_data/CRASS/"
+# location = paste(data_folder, "/CRASS/", sep="")
 # 
 # 
 # 
@@ -546,7 +550,7 @@ The antithrombotic properties of raw and pasteurised goat milk and cheeses Food 
 # Inputs
 
 projectname = "PRJEB30079"
-location = "../0_data/CRASS/"
+location = paste(data_folder, "/CRASS/", sep="")
 
 
 project_data <- get_sra_tibbles(projectname, location)
@@ -578,7 +582,7 @@ sample_data = bind_rows(sample_data, project_data$id_tbl_all)
 # Inputs
 
 projectname = "CheeseRaclette"
-location = "../0_data/CRASS/"
+location = paste(data_folder, "/CRASS/", sep="")
 
 
 project_data <- get_sra_tibbles(projectname, location)
@@ -612,7 +616,7 @@ Agroscope
 # Inputs
 
 projectname = "20201217_metagenomes"
-location = "../0_data/CRASS/"
+location = paste(data_folder, "/CRASS/", sep="")
 
 
 
@@ -722,7 +726,7 @@ high_quality = CRISPRscope_meta_tbl %>% select(SRA_ID, ProjectID) %>%
 
 # Merge the two df, use in CRISPR content barchart
 
-sample_crispr_content <- bind_rows(low_quality_or_empty, high_quality) %>% write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/CRISPRscope_meta_Project_Sample_list.csv", sep=""), col.names = TRUE)
+sample_crispr_content <- bind_rows(low_quality_or_empty, high_quality) %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/CRISPRscope_meta_Project_Sample_list.csv", sep=""), col.names = TRUE)
 
 
 
@@ -734,10 +738,10 @@ sample_crispr_content <- bind_rows(low_quality_or_empty, high_quality) %>% write
 # Import clusters 
 
 ```{r, echo = F}
-Clusters_CRISPRscope_meta_spacers <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_meta_SP.csv", sep="")) %>% 
+Clusters_CRISPRscope_meta_spacers <- read_csv(paste(data_folder, "/IMPORT/clustering/Clusters0.8_CRISPRscope_meta_SP.csv", sep="")) %>% 
   distinct(seq, cluster, identity)
 
-Clusters_CRISPRscope_meta_repeats <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_meta_DR.csv", sep="")) %>% 
+Clusters_CRISPRscope_meta_repeats <- read_csv(paste(data_folder, "/IMPORT/clustering/Clusters0.8_CRISPRscope_meta_DR.csv", sep="")) %>% 
   distinct(seq, cluster, identity)
 
 
@@ -774,10 +778,10 @@ The clustering file is then containing additional potentially unused clusters.
 
 ```{r}
 
-Clusters_CRISPRscope_spacers_identity <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep="")) %>% 
+Clusters_CRISPRscope_spacers_identity <- read_csv(paste(data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep="")) %>% 
   distinct(seq, cluster, identity) %>% select(-identity)
 
-Clusters_CRISPRscope_repeats_identity <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_REPEATS.csv", sep="")) %>% 
+Clusters_CRISPRscope_repeats_identity <- read_csv(paste(data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_REPEATS.csv", sep="")) %>% 
   distinct(seq, cluster, identity) %>% select(-identity)
 
 
@@ -844,7 +848,7 @@ CRISPRscope_meta_tbl <- CRISPRscope_meta_tbl %>%
 
 Use the exported repeat tsv file to infer the cas subtypes using CRISPRCasTyper -> Repeat_typer tool 
 ```{r}
-CRISPRscope_meta_cctyper_cas_types <- read_table2(paste(repository, "/0_data/IMPORT/cctyper/CRISPRscope_meta_cctyper_cas-types.tsv", sep="")) %>%
+CRISPRscope_meta_cctyper_cas_types <- read_table2(paste(data_folder, "/IMPORT/cctyper/CRISPRscope_meta_cctyper_cas-types.tsv", sep="")) %>%
   mutate(Prediction_probability = Prediction) %>% 
   select(-probability, -Prediction)
 #View(CRISPRscope_meta_cctyper_cas_types)
@@ -879,7 +883,7 @@ CRISPRscope_meta_tbl
 Refine samples according to metadata. Here we remove the samples taken specifically from the rind of cheese instead of core. 
 
 ```{r}
-CRISPRscope_meta_METADATA <- read_delim(paste(repository, "/0_data/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),"\t", escape_double = FALSE, trim_ws = TRUE)
+CRISPRscope_meta_METADATA <- read_delim(paste(data_folder, "/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_VS.csv", sep=""),"\t", escape_double = FALSE, trim_ws = TRUE)
 
 # Get the samples from Rind
 rind_list <- CRISPRscope_meta_METADATA  %>% filter(`Sample_location (core rind)` == "Rind") %>% select(ProjectID, SRA_ID)
@@ -924,24 +928,24 @@ CRISPRscope_meta_tbl %>% summarise(n_dr = n_distinct(spacer_seq))
 
 ```{r}
 
-saveRDS(id_data, file = paste(repository, "/0_data/CRISPRscope_meta_results/id_data.rds", sep=""))
+saveRDS(id_data, file = paste(data_folder, "/CRISPRscope_meta_results/id_data.rds", sep=""))
 
 
 # CSV format is heavier but usable everywhere
-write.csv(CRISPRscope_meta_tbl, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl.csv", sep=""))
+write.csv(CRISPRscope_meta_tbl, file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl.csv", sep=""))
 
 
 # Save an object to a file in RDS format is less space-consuming
-saveRDS(CRISPRscope_meta_tbl, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl.rds", sep=""))
+saveRDS(CRISPRscope_meta_tbl, file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl.rds", sep=""))
 
 
 
 # CSV format is heavier but usable everywhere
-write.csv(CRISPRscope_meta_tbl_filtered, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.csv", sep=""))
+write.csv(CRISPRscope_meta_tbl_filtered, file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.csv", sep=""))
 
 
 # Save an object to a file in RDS format is less space-consuming
-saveRDS(CRISPRscope_meta_tbl_filtered, file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
+saveRDS(CRISPRscope_meta_tbl_filtered, file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
 
 
 ```
@@ -969,7 +973,7 @@ out1 <- CRISPRscope_meta_tbl %>%
 
 
 df <- data.frame(out1$header, out1$seq)
-df.fasta = dataframe2fas(df, file=paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_DR_SP_DR.fasta", sep=""))
+df.fasta = dataframe2fas(df, file=paste(data_folder, "/EXPORT/fasta/CRISPRscope_DR_SP_DR.fasta", sep=""))
 
 
 ```
@@ -993,7 +997,7 @@ out2 <- CRISPRscope_meta_tbl_filtered %>%
   select(header, seq)
 
 dfs <- data.frame(out2$header, out2$seq)
-dfs.fasta = dataframe2fas(dfs, file = paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_meta_spacers.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file = paste(data_folder, "/EXPORT/fasta/CRISPRscope_meta_spacers.fasta", sep=""))
 
 
 ```
@@ -1013,11 +1017,11 @@ out_repeat <- CRISPRscope_meta_tbl_filtered %>%
   distinct(seq, .keep_all = TRUE)
 
 dfs <- data.frame(out_repeat$header, out_repeat$seq)
-dfs.fasta = dataframe2fas(dfs, file=paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_meta_repeats.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file=paste(data_folder, "/EXPORT/fasta/CRISPRscope_meta_repeats.fasta", sep=""))
 
 
 # For CRISPR cas typer (Copy paste with \n )
-write.table(repeats_unique, paste(repository, "/0_data/EXPORT/CRISPRscope_meta_unique_repeats.tsv", sep=""), na = "", quote = FALSE, sep = "\t",row.names = FALSE, col.names = FALSE)
+write.table(repeats_unique, paste(data_folder, "/EXPORT/CRISPRscope_meta_unique_repeats.tsv", sep=""), na = "", quote = FALSE, sep = "\t",row.names = FALSE, col.names = FALSE)
 
 ```
 

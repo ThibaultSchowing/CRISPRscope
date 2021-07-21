@@ -33,9 +33,9 @@ library(slider)
 #install.packages("reshape")
 library(reshape)
 
-#if (!requireNamespace("BiocManager", quietly = TRUE))
+# if (!requireNamespace("BiocManager", quietly = TRUE))
 #    install.packages("BiocManager")
-#BiocManager::install("Biostrings")
+# BiocManager::install("Biostrings")
 
 library(Biostrings)
 
@@ -47,7 +47,7 @@ library(msa)
 
 
 # Converts dataframe to fasta file
-#install.packages("seqRFLP")
+# install.packages("seqRFLP")
 library("seqRFLP")
 
 
@@ -62,6 +62,7 @@ library(cowplot)
 library(egg)
 
 # CLUSTERING test
+# BiocManager::install("DECIPHER")
 library(DECIPHER)
 library(stringi) # Random string generation
 
@@ -72,11 +73,15 @@ library(gg.gap)
 # Folders
 
 ```{r}
-results_folder <- "../0_data/CRISPRscope_results"      # Not gitted. Contains .rds results from the pipeline and diverse small intermediary results.
-repository <- "C:/Users/thsch/Desktop/master_thesis_2" # Main git repository. 
+
+repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
 google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
 
 # repository/0_data/IMPORT has to stay this way, like many other folders. 
+
+data_folder <- "C:/Users/thsch/Desktop/0_data"
+
+results_folder <- "C:/Users/thsch/Desktop/0_data/CRISPRscope_results"      # Not gitted. Contains .rds results from the pipeline and diverse small intermediary results.
 
 ```
 
@@ -198,7 +203,7 @@ done #bioprojectsss
 Read Metaphlan OUTPUT
 
 ```{r, eval=F}
-allStrains_metaphlan <- read_delim(paste(repository, "/0_data/Metaphlan_results/allStrains_metaphlan.txt", sep=""), 
+allStrains_metaphlan <- read_delim(paste(data_folder, "/Metaphlan_results/allStrains_metaphlan.txt", sep=""), 
                                    "\t", 
                                    escape_double = FALSE, 
                                    col_names = FALSE, 
@@ -213,7 +218,7 @@ allStrains_metaphlan
 allStrains_metaphlan %>% summarise(nb_species = n_distinct(Species))
 
 unique_species <- unique(allStrains_metaphlan$Species)
-write.table(unique_species, file = paste(repository, "/0_data/Metaphlan_results/metaphlan_unique_species.csv", sep=""), row.names = F, col.names = F, quote = F, eol = "\n")
+write.table(unique_species, file = paste(data_folder, "/Metaphlan_results/metaphlan_unique_species.csv", sep=""), row.names = F, col.names = F, quote = F, eol = "\n")
 
 
 # ATTENTION: Might need to mannually replace CRLF to LF with Np++
@@ -245,7 +250,7 @@ Give to each species a specifically defined color.
 
 ```{r}
 # Contains the associated color set for the species
-species_colors <- read_delim(paste(repository,"/0_data/IMPORT/species_colors.txt", sep = ""),
+species_colors <- read_delim(paste(data_folder, "/IMPORT/species_colors.txt", sep = ""),
                              "\t", escape_double = FALSE, trim_ws = TRUE) %>% 
   mutate(Species = species) %>% 
   select(-species) %>% 
@@ -255,7 +260,7 @@ species_colors <- read_delim(paste(repository,"/0_data/IMPORT/species_colors.txt
 X20210428_metaphlan_Foodbionet_final_species <- 
   read_csv(
     paste(
-      repository,"/0_data/IMPORT/20210428_metaphlan_final_species.txt", sep = "")) %>% 
+      data_folder, "/IMPORT/20210428_metaphlan_final_species.txt", sep = "")) %>% 
   mutate(species_new = gsub(" ", "_", species_new)) %>% arrange(species_new)
 
 # Update the Species names. 
@@ -488,11 +493,11 @@ Import processed clustering and merge to main tibble.
 ```{r}
 
 Clusters_CRISPRscope_spacers80 <- read_csv(paste(
-      repository,"/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_genomic_185_spacers.csv", sep = "")) %>% 
+      data_folder, "/IMPORT/clustering/Clusters0.8_CRISPRscope_genomic_185_spacers.csv", sep = "")) %>% 
   distinct(seq, cluster, identity)
 
 Clusters_CRISPRscope_repeats80 <- read_csv(paste(
-      repository,"/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_genomic_185_repeats.csv", sep = "")) %>% 
+      data_folder, "/IMPORT/clustering/Clusters0.8_CRISPRscope_genomic_185_repeats.csv", sep = "")) %>% 
   distinct(seq, cluster, identity)
 
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% select(-cluster_spacer, -identity_spacer_cluster, -cluster_repeat, -identity_repeat_cluster)
@@ -529,11 +534,11 @@ Here we only take the cluster number, not the identity %
 ```{r}
 
 Clusters_CRISPRscope_spacers_identity <- read_csv(paste(
-      repository,"/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep = "")) %>% 
+      data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep = "")) %>% 
   distinct(seq, cluster, identity) %>% select(-identity)
 
 Clusters_CRISPRscope_repeats_identity <- read_csv(paste(
-      repository,"/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_REPEATS.csv", sep = "")) %>% 
+      data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_REPEATS.csv", sep = "")) %>% 
   distinct(seq, cluster, identity) %>% select(-identity)
 
 
@@ -580,16 +585,16 @@ Integrate here the orginal numger of genomes, the database of origin, etc.
 
 # Genome count. Original number of genomes from NCBI / Dialact
 
-  genome_count_SELDIALACT <- read_delim(paste(repository, "/0_data/CRISPRscope_results/genome_count_SELDIALACT.txt", sep=""), 
-    ";", escape_double = FALSE, trim_ws = TRUE) %>% mutate(count = `12`, Species = X2) %>% select(-`12`, -X2)
-  genome_count_SELDIALACT %>% write.csv(paste(repository, "/0_data/CRISPRscope_results/export_genome_count_SELDIALACT.csv", sep=""))
+  genome_count_SELDIALACT <- read_delim(paste(data_folder, "/CRISPRscope_results/genome_count_SELDIALACT.txt", sep=""), 
+    ";", escape_double = FALSE, trim_ws = TRUE) %>% mutate(count = `12`, Species = ...2) %>% select(-`12`, -...2)
+  genome_count_SELDIALACT %>% write.csv(paste(data_folder, "/CRISPRscope_results/export_genome_count_SELDIALACT.csv", sep=""))
 
-  genome_count_SEL185 <- read_delim(paste(repository, "/0_data/CRISPRscope_results/genome_count_SEL185.txt", sep=""), 
-    ";", escape_double = FALSE, trim_ws = TRUE) %>% mutate(count = `185`, Species = X2) %>% select(-`185`, -X2)
-  genome_count_SEL185 %>% write.csv(paste(repository, "/0_data/CRISPRscope_results/export_genome_count_SEL185.csv", sep=""))
+  genome_count_SEL185 <- read_delim(paste(data_folder, "/CRISPRscope_results/genome_count_SEL185.txt", sep=""), 
+    ";", escape_double = FALSE, trim_ws = TRUE) %>% mutate(count = `185`, Species = ...2) %>% select(-`185`, -...2)
+  genome_count_SEL185 %>% write.csv(paste(data_folder, "/CRISPRscope_results/export_genome_count_SEL185.csv", sep=""))
 
   genome_count_TOTAL <- bind_rows(genome_count_SEL185, genome_count_SELDIALACT)
-  genome_count_TOTAL %>% write.csv(paste(repository, "/0_data/CRISPRscope_results/export_genome_count_total.csv", sep=""))
+  genome_count_TOTAL %>% write.csv(paste(data_folder, "/CRISPRscope_results/export_genome_count_total.csv", sep=""))
 
   # Sum the genome count for species with data from NCBI and Dialact
   genome_count_TOTAL <- tibble(aggregate(genome_count_TOTAL$count, by=list(genome_count_TOTAL$Species), sum)) %>% 
@@ -664,17 +669,17 @@ CRISPRscope_tbl_26 <- CRISPRscope_tbl_185%>% filter(Organism %in% final_species_
 
 
 ## Host genome GC content
-```{r  echo=F, results='hide'}
+```{r  echo=F, results='hide', include=FALSE}
 
 
 gc_content <- tibble()
 
-for (f in list.files(path = paste(repository, "/0_data/GCcontent/OUTPUT", sep=""))){
+for (f in list.files(path = paste(data_folder, "/GCcontent/OUTPUT", sep=""))){
 
   strain <- str_replace(f,"_gc_content.tsv$", "")
   
   
-  gc_mean <- read_delim(file = paste(repository, "/0_data/GCcontent/OUTPUT/",f, sep=""), col_names = c("name", "gc"), delim = "\t") %>% 
+  gc_mean <- read_delim(file = paste(data_folder, "/GCcontent/OUTPUT/",f, sep=""), col_names = c("name", "gc"), delim = "\t") %>% 
     summarise(mean=mean(gc)) %>% 
     mutate(Strain = strain)
   gc_content <- bind_rows(gc_content, gc_mean)
@@ -712,8 +717,8 @@ CRISPRscope_tbl_26 <- CRISPRscope_tbl_26 %>%
 ```{r}
 # Export the complete dataset for comparison with metagenomes.
 
-saveRDS(CRISPRscope_tbl_185, file = paste(repository, "/0_data/IMPORT_EXPORT/export_complete_SEL185.rds", sep=""))
-saveRDS(CRISPRscope_tbl_26, file = paste(repository, "/0_data/IMPORT_EXPORT/export_complete_SEL26.rds", sep=""))
+saveRDS(CRISPRscope_tbl_185, file = paste(data_folder, "/IMPORT_EXPORT/export_complete_SEL185.rds", sep=""))
+saveRDS(CRISPRscope_tbl_26, file = paste(data_folder, "/IMPORT_EXPORT/export_complete_SEL26.rds", sep=""))
 ```
 
 
@@ -801,7 +806,7 @@ species_levels_21 <- species_levels_21$species_levels_26
   
   
   
-  species_without_crispr %>% write.csv(file = paste(repository, "/0_data/CRISPRscope_results/species_without_crispr.csv", sep=""))
+  species_without_crispr %>% write.csv(file = paste(data_folder, "/CRISPRscope_results/species_without_crispr.csv", sep=""))
 
 
   # Attention, check numbers in the 3.2_CRISPRscope_comparison.rmd file. Numbers have been updated
@@ -885,7 +890,7 @@ spacers_unique_filtered <- CRISPRscope_tbl_185 %>% select(SpacerSeq) %>% distinc
   unite(header, c(header, sufx))
 
 dfs <- data.frame(spacers_unique_filtered$header, spacers_unique_filtered$SpacerSeq)
-dfs.fasta = dataframe2fas(dfs, file= paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_185_spacers.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file= paste(data_folder, "/EXPORT/fasta/CRISPRscope_185_spacers.fasta", sep=""))
 
 
 
@@ -907,7 +912,7 @@ out2 <- CRISPRscope_tbl_185 %>%
   select(header, seq)
 
 dfs <- data.frame(out2$header, out2$seq)
-dfs.fasta = dataframe2fas(dfs, file= paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_185_spacers_BLAST.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file= paste(data_folder, "/EXPORT/fasta/CRISPRscope_185_spacers_BLAST.fasta", sep=""))
 
 
 ```
@@ -928,7 +933,7 @@ repeats_unique <- repeats_unique %>% rowid_to_column("header") %>% add_column(su
   unite(header, c(header, sufx))
 
 dfs <- data.frame(repeats_unique$header, repeats_unique$DR_seq)
-dfs.fasta = dataframe2fas(dfs, file=paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_185_repeats.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file=paste(data_folder, "/EXPORT/fasta/CRISPRscope_185_repeats.fasta", sep=""))
 
 
 ```
@@ -947,7 +952,7 @@ spacers_unique <- CRISPRscope_tbl_185 %>% select(SpacerSeq) %>% distinct(SpacerS
   unite(header, c(header, sufx))
 
 dfs <- data.frame(spacers_unique$header, spacers_unique$SpacerSeq)
-dfs.fasta = dataframe2fas(dfs, file=paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_genomic_185_spacers.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file=paste(data_folder, "/EXPORT/fasta/CRISPRscope_genomic_185_spacers.fasta", sep=""))
 
 ## Repeats
 
@@ -956,7 +961,7 @@ repeats_unique <- CRISPRscope_tbl_185 %>% select(DR_seq) %>% distinct(DR_seq) %>
   unite(header, c(header, sufx))
 
 dfsr <- data.frame(repeats_unique$header, repeats_unique$DR_seq)
-dfsr.fasta = dataframe2fas(dfsr, file=paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_genomic_185_repeats.fasta", sep=""))
+dfsr.fasta = dataframe2fas(dfsr, file=paste(data_folder, "/EXPORT/fasta/CRISPRscope_genomic_185_repeats.fasta", sep=""))
 
 
 ```
@@ -977,7 +982,7 @@ CRISPRscope_tbl_26 %>%
   separate(Cas_subtype, c("Type", "Subtype")) %>% 
   select(-Subtype) %>% 
   distinct() %>% 
-  write.csv(file = paste(repository, "/0_data/EXPORT/SpeciesCasType.csv", sep=""), quote = T, row.names = F, col.names = T)
+  write.csv(file = paste(data_folder, "/EXPORT/SpeciesCasType.csv", sep=""), quote = T, row.names = F, col.names = T)
 
 # Species + strain
 CRISPRscope_tbl_26 %>% 
@@ -988,7 +993,7 @@ CRISPRscope_tbl_26 %>%
   select(Type, Subtype) %>% 
   distinct() %>% 
   mutate(Class = if_else(Type %in% c("I","III","IV"), "Class 1", "Class 2", "NA")) %>% 
-  write.csv(file = paste(repository, "/0_data/EXPORT/StrainCasType.csv", sep=""), quote = T, row.names = F, col.names = T)
+  write.csv(file = paste(data_folder, "/EXPORT/StrainCasType.csv", sep=""), quote = T, row.names = F, col.names = T)
 
 ```
 
@@ -1014,7 +1019,7 @@ CRISPRscope_tbl_26 %>% select(Organism, Strain, ArrayID) %>%  distinct() %>%
   group_by(Strain) %>% mutate(nb_array_strain = n()) %>% select(Organism, Strain, nb_array_strain) %>% distinct() %>% 
   ungroup() %>% group_by(Organism) %>% summarise(avg_nb_array_strain = mean(nb_array_strain)) %>% distinct() %>% 
   ungroup() %>% dplyr::rename(Species = Organism) %>% 
-  write.csv(file = paste(repository, "/0_data/EXPORT/MeanArrayPerStrain.csv", sep=""))
+  write.csv(file = paste(data_folder, "/EXPORT/MeanArrayPerStrain.csv", sep=""))
 
 ```
 
@@ -1023,7 +1028,7 @@ Spacers per array
 
 CRISPRscope_tbl_26 %>% select(Organism, Strain, ArrayID) %>%  distinct() %>% 
   group_by(Strain) %>% mutate(nb_array_strain = n()) %>% select(Organism, Strain, nb_array_strain) %>% distinct() %>% 
-  write.csv(file = paste(repository, "/0_data/EXPORT/NbArrayPerStrain.csv", sep=""))
+  write.csv(file = paste(data_folder, "/EXPORT/NbArrayPerStrain.csv", sep=""))
 
 ```
 
@@ -1368,7 +1373,7 @@ b <- CRISPRscope_tbl_26 %>%
   summarise(Cas_subtype = Cas_subtype, nb_species = n_distinct(Organism)) %>% 
   distinct() %>% mutate(Dataset = "G26")
 
-bind_rows(a,b) %>% write.csv(file = paste(repository, "/0_data/EXPORT/nb_species_per_subtype_26_185.csv", sep = ""), row.names = F)
+bind_rows(a,b) %>% write.csv(file = paste(data_folder, "/EXPORT/nb_species_per_subtype_26_185.csv", sep = ""), row.names = F)
 ```
 ## 185 species cas subtypes
 
@@ -1376,7 +1381,7 @@ bind_rows(a,b) %>% write.csv(file = paste(repository, "/0_data/EXPORT/nb_species
 CRISPRscope_tbl_185 %>% 
   select(Cas_subtype, Organism) %>% distinct() %>%  group_by(Organism) %>% mutate(count = n()) %>% 
   select(Organism, Cas_subtype, count) %>% 
-  write.csv(file = paste(repository,"/0_data/EXPORT/Cas_subtypes_per_species_185.csv", sep=""), row.names = F)
+  write.csv(file = paste(data_folder, "/EXPORT/Cas_subtypes_per_species_185.csv", sep=""), row.names = F)
 ```
 
 
@@ -1414,7 +1419,7 @@ CRISPRscope_tbl_26 %>% select(SpacerSeq, cluster_spacer_identity) %>%
 tmp_arrcount <- CRISPRscope_tbl_26 %>% 
   select(Organism, ArrayID, SpacerSeq, Cas_class, Cas_subtype) 
 
-#tmp_arrcount %>% write.csv(file = paste(repository,"/0_data/EXPORT/raw_org_arr_sp_class_type.csv", sep=""))
+#tmp_arrcount %>% write.csv(file = paste(data_folder, "/EXPORT/raw_org_arr_sp_class_type.csv", sep=""))
 
 
 tmp_arrcount %>% dplyr::count(ArrayID, Cas_subtype) %>% ggplot(aes(x=n)) +
@@ -2070,11 +2075,11 @@ ani_merged <- tibble()
 
 
 
-results_ani <- list.files(path = paste(repository, "/0_data/fastANI_results/MERGED/", sep=""))
+results_ani <- list.files(path = paste(data_folder, "/fastANI_results/MERGED/", sep=""))
 
 for (ani in results_ani){
   print(ani)
-  tmp <- read_delim(file = paste(repository, "/0_data/fastANI_results/MERGED/", ani, sep=""), 
+  tmp <- read_delim(file = paste(data_folder, "/fastANI_results/MERGED/", ani, sep=""), 
                   "\t", escape_double = FALSE, 
                   col_names = c("query","ref","ANI","bidirectional_fragment_mapping", "total_query_fragment"),
                   trim_ws = TRUE)
@@ -2094,14 +2099,14 @@ ani_merged <- ani_merged %>%
   
 
 ani_merged %>%
-  write_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/MERGED_ANI_output_clean.csv", sep=""))
+  write_csv(file = paste(data_folder, "/IMPORT_EXPORT/MERGED_ANI_output_clean.csv", sep=""))
 ```
 
 
 Heavy load - compute proportion of shared spacers
 First, we remove from the ANI file the strains that have no crispr detected. This reduces the computation.
 ```{r, eval = FALSE}
-ani_merged <- read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/MERGED_ANI_output_clean.csv", sep=""))
+ani_merged <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/MERGED_ANI_output_clean.csv", sep=""))
 
 
 # Not all the strains from the ANI are present in CRISPRscope_tbl_26
@@ -2127,14 +2132,14 @@ ANI_merged_filtered <- ani_merged %>%
 
 distinct(ANI_merged_filtered %>% select(strain_query)) # -> 1196 rows
 
-ANI_merged_filtered %>% write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""), row.names=FALSE)
+ANI_merged_filtered %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""), row.names=FALSE)
 
 ```
 
 Heavier load - for each pair compute the percentage of shared spacers. Takes around an hour or two depending on the hardware. (locally)
 ```{r, eval = FALSE}
 
-ANI_merged_filtered <- read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
+ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
 
 # Function to get 
 get_pair_shared_seq <- function(strain1str, strain2str, spacer=TRUE){
@@ -2182,7 +2187,7 @@ ANI_Shared_spacers_strain_pair <- ANI_Shared_spacers_strain_pair_raw %>%
   select(-shared_spacers)
 
 ANI_Shared_spacers_strain_pair %>% 
-  write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""), row.names=FALSE)
+  write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""), row.names=FALSE)
 
 
 
@@ -2214,7 +2219,7 @@ Filter the data by removing all strain pairs that do not share spacers at all an
 
 
 ```{r fig.height=8, fig.width=15}
-ANI_Shared_spacers_strain_pair <- read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep="")) # 21 species
+ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep="")) # 21 species
 
 
 
@@ -2228,7 +2233,7 @@ ANI_Shared_spacers_strain_pair_filtered <- ANI_Shared_spacers_strain_pair %>% se
 # Staphylococcus_equorum is lost because rarely pocess CRISPR and do not share spacers
 
 
-ANI_Shared_spacers_strain_pair_filtered %>% write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_data_plot.csv", sep=""))
+ANI_Shared_spacers_strain_pair_filtered %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot.csv", sep=""))
 
 ```
 
@@ -2238,7 +2243,7 @@ ANI_Shared_spacers_strain_pair_filtered %>% write.csv(file = paste(repository, "
 
 ```{r fig.height=6, fig.width=10}
 
-ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_data_plot.csv", sep="")) %>% 
+ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot.csv", sep="")) %>% 
   #filter(species_query == "Lacticaseibacillus_rhamnosus") %>% 
   mutate(species_query = gsub("_", " ", species_query))
 
@@ -2619,10 +2624,10 @@ what you would need is:
       --> multiple this bp length with the invert of the ANI to get the basepair difference between the two genomes). 
 2. translate the % of shared spacers into a number of shared spacers
 
-```{r}
+```{r, eval=FALSE}
 
 
-ANI_merged_filtered <- read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
+ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
 
 # Function to get 
 get_pair_nbof_shared_seq <- function(strain1str, strain2str, spacer=TRUE){
@@ -2698,7 +2703,7 @@ ANI_Shared_numberof_spacers_strain_pair <- ANI_Shared_numberof_spacers_strain_pa
   mutate(turnover_rate = nucleotide_diversity/mean_nb_spacer_numeric)
 
 ANI_Shared_numberof_spacers_strain_pair %>% 
-  write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_Shared_numberof_spacers_strain_pair.csv", sep=""), row.names=FALSE)
+  write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_numberof_spacers_strain_pair.csv", sep=""), row.names=FALSE)
 
 ANI_Shared_numberof_spacers_strain_pair %>% summarise(mean_nt_diversity = mean(nucleotide_diversity), 
                                                       max_nt_diversity = max(nucleotide_diversity),
@@ -2741,9 +2746,9 @@ names(cols) <- as.character(plt_nb_repeat$Organism)
 plt_nb_repeat$Organism = factor(plt_nb_repeat$Organism, levels = species_levels_21)
 
 
-plt_nb_repeat %>% write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/plt_nb_repeat.csv", sep=""), row.names=FALSE)
+plt_nb_repeat %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/plt_nb_repeat.csv", sep=""), row.names=FALSE)
 
-plt_nb_repeat = read_csv(file  = paste(repository, "/0_data/IMPORT_EXPORT/plt_nb_repeat.csv", sep=""))
+plt_nb_repeat = read_csv(file  = paste(data_folder, "/IMPORT_EXPORT/plt_nb_repeat.csv", sep=""))
 
 plt_nb_repeat %>% 
   ggplot(aes(x=Count, y=Organism, label = Organism)) +
@@ -2819,9 +2824,9 @@ names(cols) <- as.character(plt_nb_array$Organism)
 plt_nb_array$Organism = factor(plt_nb_array$Organism, levels = species_levels_21)
 
 
-plt_nb_array %>% write.csv(file = paste(repository, "/0_data/IMPORT_EXPORT/plt_nb_array.csv", sep=""), row.names=FALSE)
+plt_nb_array %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/plt_nb_array.csv", sep=""), row.names=FALSE)
 
-plt_nb_array = read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/plt_nb_array.csv", sep=""))
+plt_nb_array = read_csv(file = paste(data_folder, "/IMPORT_EXPORT/plt_nb_array.csv", sep=""))
 
 plt_nb_array %>% 
   ggplot(aes(x=Count, y=Organism, label = Organism)) +
@@ -3453,7 +3458,7 @@ length(list64_g)
 CRISPRscope_tbl_26 %>%
   filter(cluster_spacer_identity %in% list64_g) %>% 
   select(Organism, Strain, Scaffold) %>% distinct() %>% 
-  write.csv(file = paste(repository,"/0_data/EXPORT/Lhelv_Ldelb_scaffolds.csv", row.names=FALSE)
+  write.csv(file = paste(data_folder, "/EXPORT/Lhelv_Ldelb_scaffolds.csv", row.names=FALSE)
 
 ```
 
@@ -4259,13 +4264,13 @@ sum(CRISPRscope_tbl_26 %>%
 
 ```{r}
 # Edit distance between pairwaise comparison of all spacers
-sorted_results_1 <- read_table2(paste(repository, "/0_data/pairwise_alignment_results/sorted_results.csv", sep=""),
+sorted_results_1 <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results.csv", sep=""),
     col_names = c("count", "Editdistance")) %>%
   add_row(count = 677078, Editdistance = 0) %>% 
   arrange(Editdistance)
 
 # Raw file for sd and mean
-merged_slices <- read_csv(paste(repository, "/0_data/pairwise_alignment_results/merged_slices.csv", sep=""), 
+merged_slices <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices.csv", sep=""), 
     col_names = FALSE)
 
 
@@ -4402,11 +4407,11 @@ sum(CRISPRscope_tbl_26 %>%
 pad_long <- rep(0, 237719)
 pad_short <- rep(0, 443816)
 
-merged_slices_custom_long <- read_csv(paste(repository, "/0_data/pairwise_alignment_results/merged_slices_custom_1.csv", sep=""), 
+merged_slices_custom_long <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_1.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_long)
 library(readr)
-merged_slices_custom_short <- read_csv(paste(repository, "/0_data/pairwise_alignment_results/merged_slices_custom_2.csv", sep=""), 
+merged_slices_custom_short <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_2.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_short)
 
@@ -4434,7 +4439,7 @@ nshort_over10 = length(merged_slices_custom_short_over10$X1)
 
 # Load the 2 groups
 
-sorted_results_long <- read_table2(paste(repository, "/0_data/pairwise_alignment_results/sorted_results_custom_long.csv", sep=""),
+sorted_results_long <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results_custom_long.csv", sep=""),
                                    col_names = c("count", "Editdistance")) %>%
   mutate(group = "long")%>% 
   add_row(count = 237719, Editdistance = 0, group="long") 
@@ -4442,7 +4447,7 @@ sorted_results_long <- read_table2(paste(repository, "/0_data/pairwise_alignment
 
   
   
-sorted_results_short <- read_table2(paste(repository, "/0_data/pairwise_alignment_results/sorted_results_custom_short.csv", sep=""), 
+sorted_results_short <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results_custom_short.csv", sep=""), 
                                     col_names = c("count", "Editdistance")) %>%
   mutate(group = "short") %>% 
   add_row(count = 443816, Editdistance = 0, group="short") 
@@ -4618,7 +4623,7 @@ Pad missing data and plot
 # Load the 2 groups
 
 
-sorted_results_30 <- read_table2(paste(repository, "/0_data/pairwise_alignment_results/sorted_results_custom_30.csv", sep=""),
+sorted_results_30 <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results_custom_30.csv", sep=""),
                                    col_names = c("count", "Editdistance")) %>%
   mutate(group = "30s") %>% 
   add_row(count = 71028, Editdistance = 0, group="30s")
@@ -4626,7 +4631,7 @@ sorted_results_30 <- read_table2(paste(repository, "/0_data/pairwise_alignment_r
 
   
   
-sorted_results_not30 <- read_table2(paste(repository, "/0_data/pairwise_alignment_results/sorted_results_custom_not30.csv", sep=""), 
+sorted_results_not30 <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results_custom_not30.csv", sep=""), 
                                     col_names = c("count", "Editdistance")) %>%
   mutate(group = "not30") %>% 
   add_row(count = 609549, Editdistance = 0, group="not30")
@@ -4644,11 +4649,11 @@ sorted_results_3 <- bind_rows(sorted_results_30, sorted_results_not30) %>%
 pad_30 <- rep(0, 71028)
 pad_not30 <- rep(0, 609549)
 
-merged_slices_custom_30_1 <- read_csv(paste(repository, "/0_data/pairwise_alignment_results/merged_slices_custom_30_1.csv", sep=""), 
+merged_slices_custom_30_1 <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_30_1.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_30)
 library(readr)
-merged_slices_custom_not30_2 <- read_csv(paste(repository, "/0_data/pairwise_alignment_results/merged_slices_custom_not30_2.csv", sep=""), 
+merged_slices_custom_not30_2 <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_not30_2.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_not30)
 
@@ -4884,7 +4889,7 @@ Needs: cluster strain
 ```{r}
 # Cluster-cluster Edit distance
 #test <- read_csv("C:/Users/thsch/Desktop/tmp/test.csv", col_names = c("clst1", "clst2", "EDIT"))
-merged_slices_custom_dist6 <- read_csv(paste(repository, "/0_data/pairwise_alignment_results/merged_slices_custom_dist6.csv", sep=""), 
+merged_slices_custom_dist6 <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_dist6.csv", sep=""), 
     col_names = c("clst1", "clst2", "EDIT"))
 
 
@@ -4912,7 +4917,7 @@ merged_slices_custom_dist6 <- merged_slices_custom_dist6 %>% bind_rows(EDIT0)
 
 ```{r fig.width=12, fig.height=6}
 # Strain-strain ANI
-ANI_Shared_spacers_strain_pair <- read_csv(paste(repository, "/0_data/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
+ANI_Shared_spacers_strain_pair <- read_csv(paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
 
 # Merge 
 
@@ -5406,7 +5411,7 @@ Core genome nucleotide diversity (%)
 
 ```{r}
 # Strain-strain ANI
-ANI_Shared_spacers_strain_pair <- read_csv(file=paste(repository, "/0_data/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
+ANI_Shared_spacers_strain_pair <- read_csv(file=paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
 
 # Merge 
 
@@ -5543,7 +5548,7 @@ garbage
 
 # Function - facet zoom 2
 
-```{r}
+```{r ,eval=FALSE}
 # define facet_zoom2 function to use FacetZoom2 instead of FacetZoom
 # (everything else is the same as facet_zoom)
 facet_zoom2 <- function(x, y, xy, zoom.data, xlim = NULL, ylim = NULL, 
@@ -5772,7 +5777,7 @@ The aim is to verify that the large spacer comparison peak at mean edit distance
 
 
 
-```{r eval=T}
+```{r eval=F}
 #BiocManager::install("ShortRead")
 library(SimRAD)
 library(data.table) # fwrite
@@ -5838,10 +5843,10 @@ pairwise_comparison <- function(x,y){
 fwrite(data %>%
            mutate(dist = future_map2_dbl(seq.x, seq.y, pairwise_comparison, .progress = TRUE)) %>%
            unnest(dist),
-         file=paste(repository, "/0_data/IMPORT_EXPORT/Random_editdistance_spacer_comparison.csv", sep = ""))
+         file=paste(data_folder, "/IMPORT_EXPORT/Random_editdistance_spacer_comparison.csv", sep = ""))
 
 
-random_edit_distance_raw <- read_csv(file=paste(repository, "/0_data/IMPORT_EXPORT/Random_editdistance_spacer_comparison.csv", sep=""), col_names = T) 
+random_edit_distance_raw <- read_csv(file=paste(data_folder, "/IMPORT_EXPORT/Random_editdistance_spacer_comparison.csv", sep=""), col_names = T) 
 
 results_random_edit <- random_edit_distance_raw %>% select(dist) %>% dplyr::count(dist) %>% arrange() %>% 
   dplyr::rename(count = n) %>% 
@@ -5855,7 +5860,7 @@ results_random_edit <- random_edit_distance_raw %>% select(dist) %>% dplyr::coun
 
 ## Plot
 
-```{r, fig.height=8, fig.width=12}
+```{r, fig.height=8, fig.width=12,eval=FALSE}
 require(scales)
 library(ggforce)
 library(ggpubr)
@@ -5952,7 +5957,7 @@ ggsave(
 
 ## Compare overall with random 
 
-```{r}
+```{r,eval=FALSE}
 
 # Count all values / values > 6 and < 30
 total_edit <- sorted_results_1 %>% summarise(total = sum(count))

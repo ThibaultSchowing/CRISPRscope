@@ -38,8 +38,8 @@ library("magick")
 
 library("seqRFLP") # dataframe2fas
 
-if(!require(devtools)) install.packages("devtools")
-devtools::install_github("kassambara/ggpubr")
+# if(!require(devtools)) install.packages("devtools")
+# devtools::install_github("kassambara/ggpubr")
 library(ggpubr)
 
 
@@ -51,8 +51,10 @@ library(ggpubr)
 
 ```{r}
 
-repository <- "C:/Users/thsch/Desktop/master_thesis_2" # Main git repository. 
+repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
 google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+data_folder <- "C:/Users/thsch/Desktop/0_data"
+
 ```
 
 
@@ -62,10 +64,10 @@ google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_Stage
 ```{r}
 # Restore the objects
 
-CRISPRscope_tbl_26 <- readRDS(file = paste(repository, "/0_data/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
-CRISPRscope_tbl_185 <- readRDS(file = paste(repository, "/0_data/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
-CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
-id_data = readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/id_data.rds", sep=""))
+CRISPRscope_tbl_26 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
+CRISPRscope_tbl_185 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
+CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
+id_data = readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/id_data.rds", sep=""))
 
 
 
@@ -347,9 +349,9 @@ Try on https://www.biovenn.nl/
 
 ```{r}
 
-S1_G185 %>% write.table(file=paste(repository, "/0_data/EXPORT/list_S1G185.csv", sep=""), row.names=FALSE, col.names = FALSE)
-S2_G26 %>% write.table(file = paste(repository, "/0_data/EXPORT/list_S1G26.csv", sep=""), row.names=FALSE, col.names = FALSE)
-S3_M %>% write.table(file = paste(repository, "/0_data/EXPORT/list_S3M.csv", sep=""), row.names=FALSE, col.names = FALSE)
+S1_G185 %>% write.table(file=paste(data_folder, "/EXPORT/list_S1G185.csv", sep=""), row.names=FALSE, col.names = FALSE)
+S2_G26 %>% write.table(file = paste(data_folder, "/EXPORT/list_S1G26.csv", sep=""), row.names=FALSE, col.names = FALSE)
+S3_M %>% write.table(file = paste(data_folder, "/EXPORT/list_S3M.csv", sep=""), row.names=FALSE, col.names = FALSE)
 
 ```
 
@@ -448,9 +450,9 @@ B123 <- length(R123)
 
 category <- c("Genomes 185","Genomes 26","Metagenomes")
 
-R1_G185 %>% write.table(file = paste(repository, "/0_data/EXPORT/list_R1G185.csv", sep=""), row.names=FALSE, col.names = FALSE)
-R2_G26 %>% write.table(file = paste(repository, "/0_data/EXPORT/list_R1G26.csv", sep=""), row.names=FALSE, col.names = FALSE)
-R3_M %>% write.table(file = paste(repository, "/0_data/EXPORT/list_R3M.csv", sep=""), row.names=FALSE, col.names = FALSE)
+R1_G185 %>% write.table(file = paste(data_folder, "/EXPORT/list_R1G185.csv", sep=""), row.names=FALSE, col.names = FALSE)
+R2_G26 %>% write.table(file = paste(data_folder, "/EXPORT/list_R1G26.csv", sep=""), row.names=FALSE, col.names = FALSE)
+R3_M %>% write.table(file = paste(data_folder, "/EXPORT/list_R3M.csv", sep=""), row.names=FALSE, col.names = FALSE)
 ```
 
 
@@ -513,7 +515,7 @@ repeats_metagenome <- CRISPRscope_meta_tbl_filtered %>%
 outr <- bind_rows(repeats_genome, repeats_metagenome)
 
 dfr <- data.frame(outr$header, outr$seq)
-dfr.fasta = dataframe2fas(dfr, file = paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_ALL_REPEATS.fasta", sep=""))
+dfr.fasta = dataframe2fas(dfr, file = paste(data_folder, "/EXPORT/fasta/CRISPRscope_ALL_REPEATS.fasta", sep=""))
 
 
 
@@ -573,7 +575,7 @@ out2 %>% distinct(seq)
 
 
 dfs <- data.frame(out2$header, out2$seq)
-dfs.fasta = dataframe2fas(dfs, file = paste(repository, "/0_data/EXPORT/fasta/CRISPRscope_ALL_SPACERS.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file = paste(data_folder, "/EXPORT/fasta/CRISPRscope_ALL_SPACERS.fasta", sep=""))
 
 
 ```
@@ -590,14 +592,14 @@ TODO: use that as dictionary  to map cluster - sequence after blast
 ```{r, eval = F}
 
 # Cluster, sequence ID and sequence 
-Clusters_CRISPRscope_ALL_SPACERS <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep=""))
+Clusters_CRISPRscope_ALL_SPACERS <- read_csv(paste(data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep=""))
 
 out2 <- Clusters_CRISPRscope_ALL_SPACERS %>% arrange(cluster) %>% filter(identity == 1) %>% # Takes the cluster representative (other have 100 or -100)
   mutate(header = cluster, seq = seq) %>%
   select(header, seq)
 
 dfs <- data.frame(out2$header, out2$seq)
-dfs.fasta = dataframe2fas(dfs, file = paste(repository, "/0_data/EXPORT/fasta/cluster1_spacers_reference_CRISPRscope.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file = paste(data_folder, "/EXPORT/fasta/cluster1_spacers_reference_CRISPRscope.fasta", sep=""))
 
 
 
@@ -615,7 +617,7 @@ Now, load the cd-hit-est result and check it out !
 
 ### 100% similarity clustering - spacers
 ```{r }
-Clusters_CRISPRscope_ALL_SPACERS <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep=""))
+Clusters_CRISPRscope_ALL_SPACERS <- read_csv(paste(data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep=""))
 
 Clusters_CRISPRscope_ALL_SPACERS <- Clusters_CRISPRscope_ALL_SPACERS %>% select(seqid, cluster) %>% arrange(cluster)
 
@@ -1019,7 +1021,7 @@ out_repeat <- CRISPRscope_meta_tbl_filtered %>% filter(cluster_repeat_identity %
   distinct(seq, .keep_all = TRUE)
 
 dfs <- data.frame(out_repeat$header, out_repeat$seq)
-dfs.fasta = dataframe2fas(dfs, file=paste(repository, "/0_data/EXPORT/fasta/RepeatsMetagenomeOnly.fasta", sep=""))
+dfs.fasta = dataframe2fas(dfs, file=paste(data_folder, "/EXPORT/fasta/RepeatsMetagenomeOnly.fasta", sep=""))
 
 ```
 
@@ -1078,7 +1080,7 @@ length(R_G26_ONLY) + length(R_G185_ONLY) + length(R_G26_G185_BOTH)
 
 CRISPRscope_meta_tbl_filtered %>% select(Subtype, cluster_repeat_identity) %>% 
   filter(cluster_repeat_identity %in% R_M_only) %>% distinct() %>% 
-  write.csv(file=paste(repository, "/0_data/EXPORT/castype_cluster_metagenomeOnly.csv", sep=""), row.names = F, col.names = T) # 286
+  write.csv(file=paste(data_folder, "/EXPORT/castype_cluster_metagenomeOnly.csv", sep=""), row.names = F, col.names = T) # 286
 
 # 
 # CRISPRscope_meta_tbl_filtered %>% select(Subtype, cluster_repeat_identity) %>% 
@@ -1096,7 +1098,7 @@ CRISPRscope_meta_tbl_filtered %>% select(Subtype, cluster_repeat_identity) %>%
 
 CRISPRscope_tbl_185 %>% select(Cas_subtype, cluster_repeat_identity) %>% 
   filter(cluster_repeat_identity %in% R2_G26) %>% distinct() %>% 
-  write.csv(file=paste(repository, "/0_data/EXPORT/castype_cluster_R2_G26.csv", sep=""), row.names = F, col.names = T) #113
+  write.csv(file=paste(data_folder, "/EXPORT/castype_cluster_R2_G26.csv", sep=""), row.names = F, col.names = T) #113
 
 CRISPRscope_tbl_185 %>% select(Cas_subtype, cluster_repeat_identity) %>% 
   filter(cluster_repeat_identity %in% R2_G26) %>% select(Cas_subtype) %>% distinct()
@@ -1105,7 +1107,7 @@ CRISPRscope_tbl_185 %>% select(Cas_subtype, cluster_repeat_identity) %>%
 
 CRISPRscope_tbl_185 %>% select(Cas_subtype, cluster_repeat_identity) %>% 
   filter(cluster_repeat_identity %in% R_G185_ONLY) %>% distinct() %>% 
-  write.csv(file=paste(repository, "/0_data/EXPORT/castype_cluster_R_G185_ONLY.csv", sep=""), row.names = F, col.names = T)#425
+  write.csv(file=paste(data_folder, "/EXPORT/castype_cluster_R_G185_ONLY.csv", sep=""), row.names = F, col.names = T)#425
 
 CRISPRscope_tbl_185 %>% select(Cas_subtype, cluster_repeat_identity) %>% 
   filter(cluster_repeat_identity %in% R_G185_ONLY) %>%  select(Cas_subtype) %>% distinct()
@@ -1157,12 +1159,12 @@ awk 'BEGIN {n_seq=0;} /^>/ {if(n_seq%1000==0){file=sprintf("myseq%d.fa",n_seq);}
 
 # IMPORTED FROM Eggnog PROTEIN HITS -> Taxid = Virus
 # - 
-load(paste(repository, "/0_data/IMPORT_EXPORT/bacterial_viral_protein_hits_list", sep=""))
+load(paste(data_folder, "/IMPORT_EXPORT/bacterial_viral_protein_hits_list", sep=""))
 
 
 # IMG/VR
 
-CRISPRblast_IMGVR_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_IMGVR_vincent.txt", sep=""), 
+CRISPRblast_IMGVR_2 <- read_delim(paste(data_folder, "/BLAST/CRISPRblast_IMGVR_vincent.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
                                                "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) %>% 
   mutate(database = "IMGVR") %>% 
@@ -1170,7 +1172,7 @@ CRISPRblast_IMGVR_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_I
   select(qseqid, sseqid, pident, mismatch, stitle, database, hit_type)
 
 # NCBI non redundant nucleotide collection
-CRISPRblast_nt_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_nt_vincent.txt", sep=""), 
+CRISPRblast_nt_2 <- read_delim(paste(data_folder, "/BLAST/CRISPRblast_nt_vincent.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
                                                "sstart", "send", "evalue", "bitscore", "stitle", "slen", 
                                                "staxid", "ssciname", "sskingdom", "staxids"), trim_ws = TRUE) %>% 
@@ -1184,20 +1186,20 @@ CRISPRblast_nt_2 <- read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_nt_v
   select(qseqid, sseqid, pident, mismatch, stitle, database, hit_type)
 
   # # Verification for the viral eggnog list => 91 rows
-  # read_delim(paste(repository, "/0_data/BLAST/CRISPRblast_nt_vincent.txt", sep=""), 
+  # read_delim(paste(data_folder, "/BLAST/CRISPRblast_nt_vincent.txt", sep=""), 
   #     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
   #                                                "sstart", "send", "evalue", "bitscore", "stitle", "slen", 
   #                                                "staxid", "ssciname", "sskingdom", "staxids"), trim_ws = TRUE) %>% 
   #   select(-staxid, -ssciname, -sskingdom, -staxids) %>% 
   #   filter(qseqid %in% bacterial_viral_protein_hits_list)
 
-CRISPRblast_nt_2 %>% write_csv(file=paste(repository, "/0_data/IMPORT_EXPORT/Blast_nt_results_categories.csv", sep=""))
+CRISPRblast_nt_2 %>% write_csv(file=paste(data_folder, "/IMPORT_EXPORT/Blast_nt_results_categories.csv", sep=""))
 
 
 
 # PLSDB
 
-CRISPRblast_PLSDB_2 <- read_delim(paste(repository, "/0_data/IMPORT/PLSDB_Hits/CRISPRblast_plasmid.txt", sep=""), 
+CRISPRblast_PLSDB_2 <- read_delim(paste(data_folder, "/IMPORT/PLSDB_Hits/CRISPRblast_plasmid.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", 
                                                "qend", "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) %>% 
   mutate(database = "PLSDB") %>% 
@@ -1269,7 +1271,7 @@ hit_type_order_2 <- c("No hit" ,"Bacterial", "Plasmid", "Viral")
 CRISPRscope_blast_cluster_hit_type_2_completed %>% filter(final_hit == "Bacterial") %>% 
   left_join(CRISPRblast_nt_2 %>% select(qseqid, sseqid, stitle), by=c("cluster" = "qseqid")) %>%
   separate(sseqid, into = c("DB1","accessionID1", "DB2", "accessionID2"), sep = "[|]", remove = F) %>% 
-  write_csv(file = paste(repository, "/0_data/EXPORT/BLAST_Bacterial_hits_target_id.csv", sep=""))
+  write_csv(file = paste(data_folder, "/EXPORT/BLAST_Bacterial_hits_target_id.csv", sep=""))
 
 ```
 
@@ -1358,8 +1360,8 @@ metagenomic_blast_hits_2 <- CRISPRscope_meta_tbl_filtered %>%
 
 ```{r}
 
-genomic_blast_hits_2 %>% write_csv(file = paste(repository, "/0_data/EXPORT/BLAST_genomic_plot.csv", sep=""), col_names = T)
-metagenomic_blast_hits_2 %>% write_csv(file = paste(repository, "/0_data/EXPORT/BLAST_metagenomic_plot.csv", sep=""), col_names = T)
+genomic_blast_hits_2 %>% write_csv(file = paste(data_folder, "/EXPORT/BLAST_genomic_plot.csv", sep=""), col_names = T)
+metagenomic_blast_hits_2 %>% write_csv(file = paste(data_folder, "/EXPORT/BLAST_metagenomic_plot.csv", sep=""), col_names = T)
 
 ```
 
@@ -1507,8 +1509,8 @@ blast_genomes_plot
 ### Combined plots
 
 ```{r}
-genomic_blast_hits_2 <- read_csv(file = paste(repository, "/0_data/EXPORT/BLAST_genomic_plot.csv", sep=""), col_names = T)
-metagenomic_blast_hits_2 <- read_csv(file = paste(repository, "/0_data/EXPORT/BLAST_metagenomic_plot.csv", sep=""), col_names = T)
+genomic_blast_hits_2 <- read_csv(file = paste(data_folder, "/EXPORT/BLAST_genomic_plot.csv", sep=""), col_names = T)
+metagenomic_blast_hits_2 <- read_csv(file = paste(data_folder, "/EXPORT/BLAST_metagenomic_plot.csv", sep=""), col_names = T)
 
 
 gen_hit_plt_2 <- genomic_blast_hits_2 %>% ungroup() %>% mutate(name = Organism) %>% mutate(category = "Genomic") %>% 
@@ -1603,7 +1605,7 @@ Due to failures on entrez' side, a set of proteins sequences couldn't be retreiv
 
 GENERATE QUERY
 ```{r}
-CRISPRblast_nr_03 <- read_delim(paste(repository, "/0_data/IMPORT/Blast_nr_hits/CRISPRblast_nr_03.txt", sep=""), 
+CRISPRblast_nr_03 <- read_delim(paste(data_folder, "/IMPORT/Blast_nr_hits/CRISPRblast_nr_03.txt", sep=""), 
     "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", 
                                                "sstart", "send", "evalue", "bitscore", "stitle", "slen"), 
     trim_ws = TRUE)
@@ -1616,16 +1618,16 @@ BLASTnr_sseqid_qseqid <- CRISPRblast_nr_03 %>% select(qseqid,sseqid) %>%
   select(DB,accessionID, qseqid)
 
 # 13'657  BLAST nr results > 1984 failed on Entrez-batch
-BLASTnr_sseqid_qseqid %>% write_delim(file = paste(repository, "/0_data/EXPORT/BLASTnr_accession_list.txt", sep=""), col_names = F, delim="\n")
+BLASTnr_sseqid_qseqid %>% write_delim(file = paste(data_folder, "/EXPORT/BLASTnr_accession_list.txt", sep=""), col_names = F, delim="\n")
 
 # Get failed attempts. 
-# entrez_batch_fail_1 <- read_csv(paste(repository, "/0_data/IMPORT/Blast_nr_hits/entrez_batch_fail_1.txt", sep=""), col_names = FALSE) %>% 
+# entrez_batch_fail_1 <- read_csv(paste(data_folder, "/IMPORT/Blast_nr_hits/entrez_batch_fail_1.txt", sep=""), col_names = FALSE) %>% 
 #   mutate(X1 = gsub("Id=", "", X1)) %>% 
 #   mutate(X1 = gsub(":.*", "", X1))
 
 # Retry on Entrez-batch -> all failed to be retrieved = 1984 entries
 
-#entrez_batch_fail_1 %>% write_delim(file = paste(repository, "/0_data/BLASTnr/BLASTnr_accession_list_fail_1.txt", sep=""), col_names = F, delim="\n")
+#entrez_batch_fail_1 %>% write_delim(file = paste(data_folder, "/BLASTnr/BLASTnr_accession_list_fail_1.txt", sep=""), col_names = F, delim="\n")
 
 
 ```
@@ -1635,7 +1637,7 @@ Protein fasta sequences were then downloaded from NCBI (via entrez results) and 
 # TODO: eggnog results
 
 ```{r}
-MM_ug5vlsop_emapper_annotations <- read_delim(paste(repository, "/0_data/Eggnog_results/MM_ug5vlsop.emapper.annotations.tsv", sep=""), 
+MM_ug5vlsop_emapper_annotations <- read_delim(paste(data_folder, "/Eggnog_results/MM_ug5vlsop.emapper.annotations.tsv", sep=""), 
     "\t", escape_double = FALSE, trim_ws = TRUE, 
     skip = 4)  %>%  dplyr::slice(1:(n()-3))
 #View(MM_ug5vlsop_emapper_annotations)
@@ -1709,7 +1711,7 @@ bacterial_viral_protein_hits <- bactHits_protein_annot %>%
            Level == "Nidovirales")  
 
 bacterial_viral_protein_hits_list <- bacterial_viral_protein_hits %>% select(qseqid) %>% unlist()
-save(bacterial_viral_protein_hits_list, file=paste(repository, "/0_data/IMPORT_EXPORT/bacterial_viral_protein_hits_list", sep=""))
+save(bacterial_viral_protein_hits_list, file=paste(data_folder, "/IMPORT_EXPORT/bacterial_viral_protein_hits_list", sep=""))
   
   
 ```
@@ -1942,10 +1944,10 @@ bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>%
 
 # BLAST IMGVR metadata
 ```{r}
-IMGVR_all_Sequence_information <- read_delim(paste(repository, "/0_data/DB/IMGVR/IMG_VR_2020-10-12_5.1/IMGVR_all_Sequence_information.tsv", sep=""), 
+IMGVR_all_Sequence_information <- read_delim(paste(data_folder, "/DB/IMGVR/IMG_VR_2020-10-12_5.1/IMGVR_all_Sequence_information.tsv", sep=""), 
     "\t", escape_double = FALSE, trim_ws = TRUE)
 
-IMGVR_all_Host_information <- read_delim(paste(repository, "/0_data/DB/IMGVR/IMG_VR_2020-10-12_5.1/IMGVR_all_Host_information.tsv", sep=""), 
+IMGVR_all_Host_information <- read_delim(paste(data_folder, "/DB/IMGVR/IMG_VR_2020-10-12_5.1/IMGVR_all_Host_information.tsv", sep=""), 
     "\t", escape_double = FALSE, trim_ws = TRUE)
 
 
@@ -1969,14 +1971,14 @@ joined_IMGVR <- all_hits %>%
   distinct() %>% 
   left_join(IMGVR_all_Host_information, by = c("sseqid" = "## UViG"))
   
-write.csv(joined_IMGVR, file = paste(repository, "/0_data/EXPORT/IMGVR_Hits_join.csv", sep=""), row.names = F)
+write.csv(joined_IMGVR, file = paste(data_folder, "/EXPORT/IMGVR_Hits_join.csv", sep=""), row.names = F)
 
 
 
 ```
 
 ```{r}
-joined_IMGVR <- read.csv( file = paste(repository, "/0_data/EXPORT/IMGVR_Hits_join.csv", sep=""))
+joined_IMGVR <- read.csv( file = paste(data_folder, "/EXPORT/IMGVR_Hits_join.csv", sep=""))
 ```
 
 
@@ -2001,16 +2003,16 @@ what would be important to know is now from every genome/metagenome if it has a 
 
 ```{r}
 library(patchwork)
-# num_of_vOTUs_per_taxon <- read_csv(paste(repository, "/0_data/IMPORT/IMG_Hits/num_of_vOTUs_per_taxon.csv", sep = ""))
+# num_of_vOTUs_per_taxon <- read_csv(paste(data_folder, "/IMPORT/IMG_Hits/num_of_vOTUs_per_taxon.csv", sep = ""))
 
-# UViG_match_table <- read_csv(paste(repository, "/0_data/IMPORT/IMG_Hits/UViG_match_table.csv", sep = ""))
+# UViG_match_table <- read_csv(paste(data_folder, "/IMPORT/IMG_Hits/UViG_match_table.csv", sep = ""))
 
 
 
 # Hits in IMGVR -> sequences informations 
 # Contains cluster_spacer_id and the matching information in IMGVR
 
-joined_IMGVR <- read.csv( file = paste(repository, "/0_data/EXPORT/IMGVR_Hits_join.csv", sep=""))
+joined_IMGVR <- read.csv( file = paste(data_folder, "/EXPORT/IMGVR_Hits_join.csv", sep=""))
 
 
 # Organism - Votu : For each organism, the votu's associated. 
@@ -2028,7 +2030,7 @@ CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>%
   left_join(joined_IMGVR %>% select(qseqid, vOTU) %>% distinct(), by = c("cluster_spacer_identity" = "qseqid")) %>% 
   arrange(cluster_spacer_identity) %>% 
   drop_na() %>% mutate(Organism = gsub("_", " ", Organism)) %>% 
-  write_csv(file = paste(repository, "/0_data/EXPORT/fraction_votu_per_strain_duplicates.csv", sep=""), col_names = T)
+  write_csv(file = paste(data_folder, "/EXPORT/fraction_votu_per_strain_duplicates.csv", sep=""), col_names = T)
 
 
 
@@ -2037,7 +2039,7 @@ CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>%
 # IMGBR sequence and host information files, merged
 # and subsetted for our 26 species (host) 
 
-vOTUS_in_which_species <- read_csv(paste(repository, "/0_data/IMPORT/IMG_Hits/vOTUS_in_which_species.csv", sep=""))
+vOTUS_in_which_species <- read_csv(paste(data_folder, "/IMPORT/IMG_Hits/vOTUS_in_which_species.csv", sep=""))
 
 vOTUS_in_which_species <- vOTUS_in_which_species %>% mutate(Organism = taxon) %>% select(Organism, vOTU)
 
@@ -2053,7 +2055,7 @@ genomic_votu_per_species <- asdf  %>% distinct() %>% group_by(Organism) %>% summ
 # Pan immunity
 fraction_votu_per_species <- left_join(total_votus_per_species, genomic_votu_per_species, by=c("Organism")) %>% mutate(fraction = 100*n_votus_per_org/n_votus_per_total)
 
-fraction_votu_per_species %>% write_csv(file = paste(repository, "/0_data/EXPORT/fraction_votu_per_species.csv", sep=""), col_names = T)
+fraction_votu_per_species %>% write_csv(file = paste(data_folder, "/EXPORT/fraction_votu_per_species.csv", sep=""), col_names = T)
 
 
 # per strain
@@ -2068,15 +2070,15 @@ fraction_votu_per_strain <- CRISPRscope_tbl_26 %>% select(Organism, Strain, clus
   left_join(total_votus_per_species, by=c("Organism")) %>% 
   mutate(fraction = 100*nb_votus_per_strain/n_votus_per_total) 
 
-fraction_votu_per_strain %>% write_csv(file = paste(repository, "/0_data/EXPORT/fraction_votu_per_strain.csv", sep=""), col_names = T)
+fraction_votu_per_strain %>% write_csv(file = paste(data_folder, "/EXPORT/fraction_votu_per_strain.csv", sep=""), col_names = T)
 ```
 
 ## <p> Fraction vOTUs per Organisms/Strains
 ```{r fig.height=8, fig.width=12}
 
 
-fraction_votu_per_species <- read_csv(file = paste(repository, "/0_data/EXPORT/fraction_votu_per_species.csv", sep=""), col_names = T)
-fraction_votu_per_strain <- read_csv(file = paste(repository, "/0_data/EXPORT/fraction_votu_per_strain.csv", sep=""), col_names = T)
+fraction_votu_per_species <- read_csv(file = paste(data_folder, "/EXPORT/fraction_votu_per_species.csv", sep=""), col_names = T)
+fraction_votu_per_strain <- read_csv(file = paste(data_folder, "/EXPORT/fraction_votu_per_strain.csv", sep=""), col_names = T)
 
 
 #-----------
@@ -2189,10 +2191,10 @@ megagenomic_project_sample_votu %>% mutate(sterm = ifelse(vOTU %in% votu_in_whic
   mutate(fraction_sample = 100* total_votu_sterm_sample/total_sterm_in_imgvr) %>% 
   left_join(meta_votu_project %>% select(ProjectID, total_votu_sterm_project, fraction_project), by = c("ProjectID")) %>% 
   select(ProjectID, SRA_ID, total_sterm_in_imgvr, total_votu_sterm_project, fraction_project, total_votu_sterm_sample, fraction_sample) %>% 
-  write_csv(file = paste(repository, "/0_data/EXPORT/VOTUs_metagenomes_per_sample.csv", sep=""))
+  write_csv(file = paste(data_folder, "/EXPORT/VOTUs_metagenomes_per_sample.csv", sep=""))
   # To have 'per project' add %>% select(ProjectID, total_sterm_in_imgvr, total_votu_sterm_project, fraction_project) %>% distinct()
 
-metagenomic_votu_sterm = read_csv(file = paste(repository, "/0_data/EXPORT/VOTUs_metagenomes_per_sample.csv", sep=""))
+metagenomic_votu_sterm = read_csv(file = paste(data_folder, "/EXPORT/VOTUs_metagenomes_per_sample.csv", sep=""))
 ```
 
 
@@ -2224,7 +2226,7 @@ CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, cluster_spacer_ident
   drop_na() %>% 
   renameSamples() %>% 
   left_join(joined_IMGVR %>% select(vOTU, Taxonomic.classification) %>% distinct(), by=c("vOTU")) %>% 
-  distinct() %>% write_csv(file = paste(repository, "/0_data/EXPORT/vOTU_per_sample.csv", sep=""))
+  distinct() %>% write_csv(file = paste(data_folder, "/EXPORT/vOTU_per_sample.csv", sep=""))
 
 # Total votu in IMG
 #IMGVR_all_Sequence_information %>% select(vOTU) %>% distinct() # 935,362
@@ -2283,7 +2285,7 @@ all_meta_votu <- CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, clu
 
 
 ```{r}
-CRISPR_spacer_coverage %>% read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""), col_names = T)
+CRISPR_spacer_coverage <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""), col_names = T)
 
 # Firstly, get cluster number from Spacer ID
 
@@ -2385,7 +2387,7 @@ plot
 
 
 ```{r}
-CRISPR_spacer_coverage_2 <- CRISPR_spacer_coverage %>% read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""), col_names = T) %>% 
+CRISPR_spacer_coverage_2 <-  read_csv(paste(data_folder, "/IMPORT_EXPORT/DR_SP_DR_results.csv", sep="")) %>% 
   mutate(ProjectID = bioproject) %>% 
   renameSamples()
 
@@ -2493,8 +2495,8 @@ plot
 #===============================
 
 
-CRISPRscope_tbl_26 <- readRDS(file = paste(repository, "/0_data/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
-CRISPRscope_tbl_185 <- readRDS(file = paste(repository, "/0_data/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
+CRISPRscope_tbl_26 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
+CRISPRscope_tbl_185 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
 
 
 # Number of species and genomes sith CRISPR
@@ -2569,7 +2571,7 @@ morethanone_dr80 <- sum(repeat_cluster_80_count %>% filter(n_species > 1) %>% se
 #===============================
 
 
-ANI_Shared_spacers_strain_pair <- read_csv(file = paste(repository, "/0_data/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
+ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
 
 ANI_Shared_spacers_strain_pair %>% summarise(min_ani = min(ANI), max_ani = max(ANI), mean_ani = mean(ANI), sd_ani = sd(ANI))
 
@@ -2636,7 +2638,7 @@ nb_ani_small_shared_high / total_pairs
 #===============================
 
 # Raw file 
-merged_slices <- read_csv(file=paste(repository, "/0_data/pairwise_alignment_results/merged_slices.csv", sep=""), 
+merged_slices <- read_csv(file=paste(data_folder, "/pairwise_alignment_results/merged_slices.csv", sep=""), 
     col_names = FALSE)
 
 # The majority
@@ -2653,8 +2655,8 @@ majority <- merged_slices %>% filter(X1 < 30 && X1 > 6) %>% summarise(n = n()) %
 
 ```{r}
 library(tidyverse)
-CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
-id_data = readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/id_data.rds", sep=""))
+CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
+id_data = readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/id_data.rds", sep=""))
 
 # Number of samples - raw
   id_data %>% summarise(nb_project = n_distinct(ProjectID), nb_samples = n_distinct(SRA_ID)) # 203
@@ -2707,9 +2709,9 @@ CRISPRscope_meta_tbl_filtered %>% select(SRA_ID, repeat_per_milread) %>% distinc
 
 
 
-CRISPRscope_tbl_26 <- readRDS(file = paste(repository, "/0_data/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
-CRISPRscope_tbl_185 <- readRDS(file = paste(repository, "/0_data/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
-CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(repository, "/0_data/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
+CRISPRscope_tbl_26 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
+CRISPRscope_tbl_185 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
+CRISPRscope_meta_tbl_filtered <- readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/CRISPRscope_meta_tbl_filtered.rds", sep=""))
 
 
 CRISPRscope_tbl_185 %>% select(cluster_spacer_identity) %>% 
@@ -2722,7 +2724,7 @@ CRISPRscope_tbl_185 %>% select(cluster_spacer_identity) %>%
 # 
 
 
-Clusters_CRISPRscope_ALL_SPACERS <- read_csv(paste(repository, "/0_data/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep=""))
+Clusters_CRISPRscope_ALL_SPACERS <- read_csv(paste(data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep=""))
 
 
 
