@@ -1881,16 +1881,49 @@ CRISPRscope_blast_cluster_hit_type_2 contains cluster / type -> subset type == "
 -> check in eggnog results
 
 
-```{r}
+```{r fig.height=8, fig.width=12}
 is.zero <- function(x){return(x==0)}
 
 list_cog <- c("S2","A","BK","C","CO","CQ","D","DM","DZ","E","EGP","EJ","EP","F","G","GK","GM","H",
               "I","IQ","J","K","KL","KLT","KQ","KT","L","LM","M","MP","MU","N","NT","NU","O","OT",
               "OU","P","Q","S","T","U","UW","V","Z")
 
-order_cog <- c("S","A","C","D","E","F","G","H",
+order_cog <- c("S","A","B","C","D","E","F","G","H",
               "I","J","K","L","M","N","O",
-              "P","Q","T","U","V","Z")
+              "P","Q","T","U","V", "W","Z")
+
+renameCOG <- function(tibble){
+  return(tibble %>% 
+           mutate(COG = replace(COG, COG == "A", "RNA processing\n modification")) %>% 
+           mutate(COG = replace(COG, COG == "B", "Chromatin structure\n dynamics")) %>% 
+           mutate(COG = replace(COG, COG == "C", "Energy production\n conversion")) %>% 
+           mutate(COG = replace(COG, COG == "D", "Cell cycle control\n mitosis")) %>% 
+           mutate(COG = replace(COG, COG == "E", "Amino acid metabolism\n transport")) %>% 
+           mutate(COG = replace(COG, COG == "F", "Nucleotide metabolism\n transport")) %>% 
+           mutate(COG = replace(COG, COG == "G", "Carbohydrate metabolism\n transport")) %>% 
+           mutate(COG = replace(COG, COG == "H", "Coenzyme transport\n metabolism")) %>% 
+           mutate(COG = replace(COG, COG == "I", "Lipid metabolism")) %>% 
+           mutate(COG = replace(COG, COG == "J", "Translation")) %>% 
+           mutate(COG = replace(COG, COG == "K", "Transcription")) %>% 
+           mutate(COG = replace(COG, COG == "L", "Replication\n repair")) %>% 
+           mutate(COG = replace(COG, COG == "M", "Cell wall membrane\n biogenesis")) %>% 
+           mutate(COG = replace(COG, COG == "N", "Cell motility")) %>% 
+           mutate(COG = replace(COG, COG == "O", "Post-translational modification")) %>% 
+           mutate(COG = replace(COG, COG == "P", "Inorganic ion transport\n metabolism")) %>% 
+           mutate(COG = replace(COG, COG == "Q", "Secondary structure")) %>% 
+           mutate(COG = replace(COG, COG == "R", "General Functional\n  Prediction only")) %>% 
+           mutate(COG = replace(COG, COG == "S", "Function unknown")) %>% 
+           mutate(COG = replace(COG, COG == "T", "Signal transduction")) %>% 
+           mutate(COG = replace(COG, COG == "U", "Intracellular trafficking\n secretion")) %>% 
+           mutate(COG = replace(COG, COG == "V", "Defense mechanisms")) %>% 
+           mutate(COG = replace(COG, COG == "W", "Extra cellular structures")) %>% 
+           mutate(COG = replace(COG, COG == "X", "Mobilome: Prophage, Transposon")) %>% 
+           mutate(COG = replace(COG, COG == "Y", "Nuclear structure")) %>% 
+           mutate(COG = replace(COG, COG == "Z", "Cytoskeleton")) 
+           
+  )
+}
+
 
 cog_categories_sum <- bactHits_protein_annot %>% spread(COG_category, COG_category) %>% 
   select(-PFAMs, -BRITE, -KEGG_TC, -CAZy, -BiGG_Reaction,-KEGG_ko, -KEGG_Pathway, -KEGG_Module, -KEGG_Reaction, -KEGG_rclass, -KEGG_TC) %>% 
@@ -1928,15 +1961,21 @@ cog_categories_sum <- bactHits_protein_annot %>% spread(COG_category, COG_catego
 
 cog_categories_sum_T <- as_tibble(cbind(nms = names(cog_categories_sum), t(cog_categories_sum))) %>% 
   dplyr::rename(COG = nms, n = V2) %>% 
+  renameCOG %>% 
   mutate(n = as.double(n)) %>% 
-  mutate(COG = factor(COG, levels = order_cog))
+  arrange(desc(n)) %>% 
+  mutate(COG = factor(COG, levels = COG))
 
 
-cog_categories_sum_T %>% 
+cog_categories_sum_T %>%  
   ggplot(aes(x=COG, y=n))  +
-  geom_bar(stat="identity", width=1)  +
+  geom_bar(stat="identity", width=.8)  +
   theme_classic() +
-  xlab("COG categories of the 814 spacers matched to a protein. (Total: 859) ")
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )+
+  xlab("COG categories of the 814/6143 spacers with a bacterial BLAST hit \nmatched to a protein. (Total: 859) ")+
+  ylab("")
 
 # Some verifications
 
