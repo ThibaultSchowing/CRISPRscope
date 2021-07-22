@@ -112,7 +112,14 @@ CRISPRblast_nt_2 %>% write_csv(file=paste(data_folder, "/IMPORT_EXPORT/Blast_nt_
 
 
 
+# Last but not least, the spacers among nt / unassigned that have been found being part of CRISPR arrays 
+# (They match themselves in the database) -> CRISPRblast_nt_vincent_CRISPR.txt
 
+Blast_nt_vincent_CRISPR_2 <- read_delim(paste(data_folder, "/BLAST/CRISPRblast_nt_vincent_CRISPR.txt", sep=""), 
+    "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", 
+                                               "qend", "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) 
+
+CRISPR_hits_list <- Blast_nt_vincent_CRISPR_2 %>% select(qseqid) %>% unlist()
 
 # 
 # CRISPRblast_IMGVR_2
@@ -142,6 +149,7 @@ CRISPRblast_2 <- bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PL
                             ifelse("Plasmid" %in% hit_type %>% unlist(),
                                    "Plasmid",
                                    "Unassigned"))) %>% 
+  mutate(final_hit = ifelse(cluster %in% CRISPR_hits_list, "CRISPR", final_hit)) %>% 
   ungroup() %>% 
   select(cluster, final_hit) %>% 
   distinct()
@@ -295,25 +303,6 @@ unassigned_hits_protein_annot_noviral %>%
 
 
 ```
-
-
-
-
-
-
-
-
-TODO: Lists with Plasmids and CRISPRs
-
-```{r}
-
-
-
-
-```
-
-
-
 
 
 

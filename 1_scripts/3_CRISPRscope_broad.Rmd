@@ -1207,6 +1207,17 @@ CRISPRblast_PLSDB_2 <- read_delim(paste(data_folder, "/IMPORT/PLSDB_Hits/CRISPRb
   select(qseqid, sseqid, pident, mismatch, stitle, database, hit_type)
 
 
+# CRISPR
+
+# Last but not least, the spacers among nt / unassigned that have been found being part of CRISPR arrays 
+# (They match themselves in the database) -> CRISPRblast_nt_vincent_CRISPR.txt
+
+Blast_nt_vincent_CRISPR_2 <- read_delim(paste(data_folder, "/BLAST/CRISPRblast_nt_vincent_CRISPR.txt", sep=""), 
+    "\t", escape_double = FALSE, col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", 
+                                               "qend", "sstart", "send", "evalue", "bitscore", "stitle", "slen"), trim_ws = TRUE) 
+
+
+CRISPR_hits_list <- Blast_nt_vincent_CRISPR_2 %>% select(qseqid) %>% unlist()
 
 CRISPRblast_IMGVR_2
 CRISPRblast_nt_2 
@@ -1229,9 +1240,13 @@ CRISPRblast_2 <- bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PL
                             ifelse("Plasmid" %in% hit_type %>% unlist(),
                                    "Plasmid",
                                    "Bacterial"))) %>% 
+  mutate(final_hit = ifelse(cluster %in% CRISPR_hits_list, "CRISPR", final_hit)) %>% 
   ungroup() %>% 
   select(cluster, final_hit) %>% 
   distinct()
+
+# => list of cluster | hit_type
+# This is only the clusters that have a HIT !!
 
 #--------------------------------------
 # Get all clusters from the dataset (blast has additional sequences, because exported before filtering/all genomes)
@@ -1248,7 +1263,10 @@ all_crisprscope_clusters <- bind_rows(CRISPRscope_tbl_185 %>%
 
 
 # List of valid (in filtered datasets) cluster-category 
+# Remove old exported clusters that might have been removed (cas for the >50bp spacers)
 CRISPRscope_blast_cluster_hit_type_2 <- CRISPRblast_2 %>% filter(cluster %in% (all_crisprscope_clusters %>% unlist()))
+
+CRISPRscope_blast_cluster_hit_type_2 %>% select(final_hit) %>% distinct()
 
 # Complete with "no hit"
 CRISPRscope_blast_cluster_hit_type_2_completed <- bind_rows(CRISPRscope_blast_cluster_hit_type_2,
@@ -1257,21 +1275,23 @@ CRISPRscope_blast_cluster_hit_type_2_completed <- bind_rows(CRISPRscope_blast_cl
                                                               mutate(final_hit = "No hit") %>% 
                                                               dplyr::rename(cluster = cluster_spacer_identity))
 
+CRISPRscope_blast_cluster_hit_type_2_completed  %>% select(final_hit) %>% distinct()
 
 #--------------------------------------
 # Types ordering
 #--------------------------------------
 
-hit_type_order_2 <- c("No hit" ,"Bacterial", "Plasmid", "Viral")
+hit_type_order_2 <- c("No hit" ,"Bacterial", "CRISPR", "Plasmid", "Viral")
 
 
 #--------------------------------------
 # Take bacterial assignation and join to sseqid
 #--------------------------------------
-CRISPRscope_blast_cluster_hit_type_2_completed %>% filter(final_hit == "Bacterial") %>% 
-  left_join(CRISPRblast_nt_2 %>% select(qseqid, sseqid, stitle), by=c("cluster" = "qseqid")) %>%
-  separate(sseqid, into = c("DB1","accessionID1", "DB2", "accessionID2"), sep = "[|]", remove = F) %>% 
-  write_csv(file = paste(data_folder, "/EXPORT/BLAST_Bacterial_hits_target_id.csv", sep=""))
+# CRISPRscope_blast_cluster_hit_type_2_completed %>% filter(final_hit == "Bacterial") %>% 
+#   left_join(CRISPRblast_nt_2 %>% 
+#               select(qseqid, sseqid, stitle), by=c("cluster" = "qseqid")) %>%
+#   separate(sseqid, into = c("DB1","accessionID1", "DB2", "accessionID2"), sep = "[|]", remove = F) %>% 
+#   write_csv(file = paste(data_folder, "/EXPORT/BLAST_Bacterial_hits_target_id.csv", sep=""))
 
 ```
 
@@ -1282,6 +1302,30 @@ CRISPRscope_blast_cluster_hit_type_2_completed %>% filter(final_hit == "Bacteria
 # Genomic
 #
 
+# TBR
+CRISPRscope_tbl_26 %>% 
+  renameOrganism() %>% 
+  filter(Organism == "Bani") %>% 
+  select(Organism, cluster_spacer_identity) %>% count(Organism) # 2409 spacers
+
+CRISPRscope_tbl_26 %>% 
+  renameOrganism() %>% 
+  filter(Organism == "Bani") %>% 
+  select(Organism, cluster_spacer_identity) %>% 
+  distinct() %>% count(Organism) # 606 distinct spacers
+
+CRISPRscope_tbl_26 %>% 
+  renameOrganism() %>% 
+  filter(Organism == "Ccas") %>% 
+  select(Organism, cluster_spacer_identity) %>% count(Organism) # 205 spacers
+
+CRISPRscope_tbl_26 %>% 
+  renameOrganism() %>% 
+  filter(Organism == "Ccas") %>% 
+  select(Organism, cluster_spacer_identity) %>% 
+  distinct() %>% count(Organism) # 140 distinct spacers
+
+# TBR
 
 # Species order (highest to lowest number of hits)
 
@@ -1295,6 +1339,8 @@ genomic_blast_species_order <- CRISPRscope_tbl_26 %>%
   group_by(Organism) %>% mutate(total_hits=n()) %>% mutate(ratio = total_hits/total_cluster) %>% arrange(desc(ratio)) %>% 
   mutate(Organism = paste(Organism, " (", total_cluster , ")")) %>% select(Organism) %>% distinct() %>% 
   unlist()
+
+
 
 # Hits proportion per species
 
@@ -1399,7 +1445,7 @@ blast_meta_plot <- metagenomic_blast_hits_2  %>%
   geom_col(stat="identity") +
   coord_flip() + # supplementary figure -> difference between species / overall 40-50% of target unknown
   #scale_fill_manual(values = c("darkgoldenrod2", "cyan2" ,"cyan2","cyan2","cyan2","grey"))
-  scale_fill_manual(values = c("grey","darkorchid","mediumorchid", "palevioletred3"))+  
+  scale_fill_manual(values = c("grey","darkorchid","darkorchid4","mediumorchid", "palevioletred3"))+  
   scale_x_discrete(labels = function(x) str_replace(x, "_", " "), limits=rev) +
   theme_bw() +
   theme(
@@ -1456,7 +1502,7 @@ blast_genomes_plot <- genomic_blast_hits_2  %>%
   geom_col(stat="identity") +
   coord_flip() + # supplementary figure -> difference between species / overall 40-50% of target unknown
   #scale_fill_manual(values = c("darkgoldenrod2", "cyan2" ,"cyan2","cyan2","cyan2","grey"))
-  scale_fill_manual(values = c("grey","darkorchid","mediumorchid", "palevioletred3"))+  
+  scale_fill_manual(values = c("grey","darkorchid","darkorchid4","mediumorchid", "palevioletred3"))+  
   scale_x_discrete(labels = function(x) str_replace(x, "_", " "), limits=rev) +
   theme_bw() +
   theme(
@@ -1532,7 +1578,7 @@ hit_plt_2 <- hit_plt_2 %>% group_by(name) %>%
 
 hit_plt_2_order <- hit_plt_2 %>% arrange(desc(p)) %>% select(name) %>% distinct() %>% unlist()
 hit_plt_2$name <- factor(hit_plt_2$name, levels = hit_plt_2_order)
-hit_plt_2$final_hit <- factor(hit_plt_2$final_hit, levels = c("No hit", "Viral", "Plasmid", "Bacterial"))
+hit_plt_2$final_hit <- factor(hit_plt_2$final_hit, levels = c("No hit","CRISPR",  "Bacterial","Plasmid", "Viral"))
 
 hit_plt_2 <- hit_plt_2 %>% arrange(name)
 
@@ -1548,7 +1594,7 @@ plt_gm_blast <- hit_plt_2 %>%
   geom_col() +
   #coord_flip() + # supplementary figure -> difference between species / overall 40-50% of target unknown
   #scale_fill_manual(values = c("darkgoldenrod2", "cyan2" ,"cyan2","cyan2","cyan2","grey"))
-  scale_fill_manual(values = c("grey","darkorchid","mediumorchid", "palevioletred3"))+  
+  scale_fill_manual(values = c("grey","darkorchid","darkorchid4","mediumorchid", "palevioletred3"))+  
   theme_bw() +
   theme(
     axis.text.y = element_text(hjust = 1,color = "black",size = 12,face = "italic"),
@@ -1571,7 +1617,7 @@ plt_gm_blast <- hit_plt_2 %>%
     panel.grid.major = element_line(color = "grey", size = 0.1),
     panel.grid.minor = element_line(color = "grey", size = 0.1),
     strip.background = element_rect(color = "black", fill = "white",size = 0.5,linetype = "solid" ),
-    strip.text = element_text(color = "grey")
+    strip.text = element_text(color = "black")
   )+
   guides(fill = guide_legend(reverse = TRUE)) +
   ylab("") +
@@ -1662,6 +1708,8 @@ Eggnog_results
 # Identify what the bacterial spacers target
 # Spacers - BLASTnr - Entrez - Eggnog
 BLAST_clusters_bacteria <- CRISPRscope_blast_cluster_hit_type_2 %>% filter(final_hit == "Bacterial")
+
+
 # 14'476 bacterial hits
 # 14'567 before marking 91 spacers as Viral (from eggnog protein annotation)
 
@@ -1776,6 +1824,10 @@ eggnog_plt_taxlevel
 
 
 ```{r fig.height=8, fig.width=12}
+bactHits_protein_annot
+
+# COG is only a single letter. If it's 2 or 3 letters so a protein might be in 
+
 eggnog_plt_COG <- bactHits_protein_annot %>% 
   select(qseqid, COG_category, max_annot_lvl) %>% 
   separate(max_annot_lvl, into = c("taxid?", "Level"), sep = "[|]") %>% 
@@ -1821,7 +1873,7 @@ ggsave(
   dpi = 800
 )
 
-#eggnog_plt_COG
+eggnog_plt_COG
 ```
 
 
@@ -1829,6 +1881,69 @@ CRISPRscope_blast_cluster_hit_type_2 contains cluster / type -> subset type == "
 -> check in eggnog results
 
 
+```{r}
+is.zero <- function(x){return(x==0)}
+
+list_cog <- c("S2","A","BK","C","CO","CQ","D","DM","DZ","E","EGP","EJ","EP","F","G","GK","GM","H",
+              "I","IQ","J","K","KL","KLT","KQ","KT","L","LM","M","MP","MU","N","NT","NU","O","OT",
+              "OU","P","Q","S","T","U","UW","V","Z")
+
+order_cog <- c("S","A","C","D","E","F","G","H",
+              "I","J","K","L","M","N","O",
+              "P","Q","T","U","V","Z")
+
+cog_categories_sum <- bactHits_protein_annot %>% spread(COG_category, COG_category) %>% 
+  select(-PFAMs, -BRITE, -KEGG_TC, -CAZy, -BiGG_Reaction,-KEGG_ko, -KEGG_Pathway, -KEGG_Module, -KEGG_Reaction, -KEGG_rclass, -KEGG_TC) %>% 
+  select(-seed_ortholog, -evalue, -score, -eggNOG_OGs, -max_annot_lvl, -Description, -Preferred_name, -GOs, -EC) %>% 
+  dplyr::rename(S2 = `-`) %>% 
+  mutate_all(funs(replace_na(., 0))) %>% 
+  mutate_at(list_cog, as.integer) %>% 
+  mutate_all(funs(replace_na(., 1))) %>% 
+  mutate(A = rowSums(select(.,A))) %>%
+  mutate(S = rowSums(select(.,S, S2))) %>%
+  mutate(B = rowSums(select(.,BK))) %>% 
+  mutate(C = rowSums(select(.,C, CO, CQ))) %>%
+  mutate(D = rowSums(select(.,D, DM, DZ))) %>%
+  mutate(E = rowSums(select(.,E, EGP, EJ, EP))) %>%
+  mutate(F = rowSums(select(.,F))) %>%
+  mutate(G = rowSums(select(.,G, EGP, GK, GM))) %>%
+  mutate(H = rowSums(select(.,H))) %>%
+  mutate(I = rowSums(select(.,I, IQ))) %>%
+  mutate(J = rowSums(select(.,J, EJ))) %>%
+  mutate(K = rowSums(select(.,K, BK, GK, KL, KLT, KQ, KT))) %>%
+  mutate(L = rowSums(select(.,L, KL, KLT, LM))) %>%
+  mutate(M = rowSums(select(.,M, DM, GM, LM, MP, MU))) %>%
+  mutate(N = rowSums(select(.,N, NT, NU))) %>%
+  mutate(O = rowSums(select(.,O, CO, OT, OU))) %>%
+  mutate(P = rowSums(select(.,P, EGP, EP, MP))) %>%
+  mutate(Q = rowSums(select(.,Q, CQ, IQ, KQ, ))) %>%
+  mutate(T = rowSums(select(.,T, KT, NT, OT, KLT))) %>%
+  mutate(U = rowSums(select(.,U, MU, NU, OU, UW))) %>%
+  mutate(W = rowSums(select(.,UW))) %>%
+  mutate(V = rowSums(select(.,V))) %>%
+  mutate(Z = rowSums(select(.,Z, DZ))) %>% 
+  select(S,A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,T,U,W,V,Z) %>% 
+  summarise(across(everything(), list(sum)))%>% rename_at(vars(ends_with("_1")), funs(str_replace(., "_1", ""))) 
+
+
+cog_categories_sum_T <- as_tibble(cbind(nms = names(cog_categories_sum), t(cog_categories_sum))) %>% 
+  dplyr::rename(COG = nms, n = V2) %>% 
+  mutate(n = as.double(n)) %>% 
+  mutate(COG = factor(COG, levels = order_cog))
+
+
+cog_categories_sum_T %>% 
+  ggplot(aes(x=COG, y=n))  +
+  geom_bar(stat="identity", width=1)  +
+  theme_classic() +
+  xlab("COG categories of the 814 spacers matched to a protein. (Total: 859) ")
+
+# Some verifications
+
+sum( cog_categories_sum_T$n) # 859 
+
+
+```
 
 
 
@@ -1891,6 +2006,8 @@ ggsave(
 BLAST_castype_hit_plot
 
 ```
+#TODO relative abundance of y axis. Per type.
+stacked barchart / all in one figure !
 
 
 
@@ -2532,6 +2649,7 @@ mean(CRISPRscope_tbl_26 %>% group_by(ArrayID) %>% summarise(array_size = n()) %>
 sd(CRISPRscope_tbl_26 %>% group_by(ArrayID) %>% summarise(array_size = n()) %>% select(array_size) %>% unlist() )
 
 
+
 # Proportion of strains w/wo CRISPR -> in 1.2 / Numbers / CRISPR content
 
 
@@ -2571,7 +2689,7 @@ morethanone_dr80 <- sum(repeat_cluster_80_count %>% filter(n_species > 1) %>% se
 #===============================
 
 
-ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
+ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair2.csv", sep=""))
 
 ANI_Shared_spacers_strain_pair %>% summarise(min_ani = min(ANI), max_ani = max(ANI), mean_ani = mean(ANI), sd_ani = sd(ANI))
 
