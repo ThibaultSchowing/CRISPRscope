@@ -1221,7 +1221,7 @@ CRISPR_hits_list <- Blast_nt_vincent_CRISPR_2 %>% select(qseqid) %>% unlist()
 
 CRISPRblast_IMGVR_2
 CRISPRblast_nt_2 
-CRISPRblast_PLSDB_2
+CRISPRblast_PLSDB_2 # 3,467
 
 #--------------------------------------
 # Assign correct hit type
@@ -1235,12 +1235,12 @@ CRISPRblast_PLSDB_2
 CRISPRblast_2 <- bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>% 
   group_by(qseqid) %>% 
   summarise(cluster = qseqid, hit_type = hit_type) %>% 
+  mutate(final_hit = ifelse(cluster %in% CRISPR_hits_list, "CRISPR", "")) %>% # Assign CRISPR first.
   mutate(final_hit = ifelse("Viral" %in% hit_type %>% unlist(), 
                             "Viral", 
                             ifelse("Plasmid" %in% hit_type %>% unlist(),
                                    "Plasmid",
                                    "Bacterial"))) %>% 
-  mutate(final_hit = ifelse(cluster %in% CRISPR_hits_list, "CRISPR", final_hit)) %>% 
   ungroup() %>% 
   select(cluster, final_hit) %>% 
   distinct()
@@ -1273,7 +1273,8 @@ CRISPRscope_blast_cluster_hit_type_2_completed <- bind_rows(CRISPRscope_blast_cl
                                                             all_crisprscope_clusters %>% 
                                                               filter(!cluster_spacer_identity %in% CRISPRscope_blast_cluster_hit_type_2$cluster) %>% 
                                                               mutate(final_hit = "No hit") %>% 
-                                                              dplyr::rename(cluster = cluster_spacer_identity))
+                                                              dplyr::rename(cluster = cluster_spacer_identity)) %>% 
+  mutate(final_hit = ifelse(final_hit == "CRISPR", "No hit", final_hit))
 
 CRISPRscope_blast_cluster_hit_type_2_completed  %>% select(final_hit) %>% distinct()
 
@@ -1281,7 +1282,7 @@ CRISPRscope_blast_cluster_hit_type_2_completed  %>% select(final_hit) %>% distin
 # Types ordering
 #--------------------------------------
 
-hit_type_order_2 <- c("No hit" ,"Bacterial", "CRISPR", "Plasmid", "Viral")
+hit_type_order_2 <- c("No hit" ,"Bacterial",  "Plasmid", "Viral")
 
 
 #--------------------------------------
@@ -1302,30 +1303,30 @@ hit_type_order_2 <- c("No hit" ,"Bacterial", "CRISPR", "Plasmid", "Viral")
 # Genomic
 #
 
-# TBR
-CRISPRscope_tbl_26 %>% 
-  renameOrganism() %>% 
-  filter(Organism == "Bani") %>% 
-  select(Organism, cluster_spacer_identity) %>% count(Organism) # 2409 spacers
-
-CRISPRscope_tbl_26 %>% 
-  renameOrganism() %>% 
-  filter(Organism == "Bani") %>% 
-  select(Organism, cluster_spacer_identity) %>% 
-  distinct() %>% count(Organism) # 606 distinct spacers
-
-CRISPRscope_tbl_26 %>% 
-  renameOrganism() %>% 
-  filter(Organism == "Ccas") %>% 
-  select(Organism, cluster_spacer_identity) %>% count(Organism) # 205 spacers
-
-CRISPRscope_tbl_26 %>% 
-  renameOrganism() %>% 
-  filter(Organism == "Ccas") %>% 
-  select(Organism, cluster_spacer_identity) %>% 
-  distinct() %>% count(Organism) # 140 distinct spacers
-
-# TBR
+# # TBR
+# CRISPRscope_tbl_26 %>% 
+#   renameOrganism() %>% 
+#   filter(Organism == "Bani") %>% 
+#   select(Organism, cluster_spacer_identity) %>% count(Organism) # 2409 spacers
+# 
+# CRISPRscope_tbl_26 %>% 
+#   renameOrganism() %>% 
+#   filter(Organism == "Bani") %>% 
+#   select(Organism, cluster_spacer_identity) %>% 
+#   distinct() %>% count(Organism) # 606 distinct spacers
+# 
+# CRISPRscope_tbl_26 %>% 
+#   renameOrganism() %>% 
+#   filter(Organism == "Ccas") %>% 
+#   select(Organism, cluster_spacer_identity) %>% count(Organism) # 205 spacers
+# 
+# CRISPRscope_tbl_26 %>% 
+#   renameOrganism() %>% 
+#   filter(Organism == "Ccas") %>% 
+#   select(Organism, cluster_spacer_identity) %>% 
+#   distinct() %>% count(Organism) # 140 distinct spacers
+# 
+# # TBR
 
 # Species order (highest to lowest number of hits)
 
@@ -1406,6 +1407,9 @@ metagenomic_blast_hits_2 <- CRISPRscope_meta_tbl_filtered %>%
 
 ```{r}
 
+
+
+
 genomic_blast_hits_2 %>% write_csv(file = paste(data_folder, "/EXPORT/BLAST_genomic_plot.csv", sep=""), col_names = T)
 metagenomic_blast_hits_2 %>% write_csv(file = paste(data_folder, "/EXPORT/BLAST_metagenomic_plot.csv", sep=""), col_names = T)
 
@@ -1417,22 +1421,39 @@ metagenomic_blast_hits_2 %>% write_csv(file = paste(data_folder, "/EXPORT/BLAST_
 Proportion plasmid virus etc
 
 ```{r}
+# meta
+metagenomic_blast_count <- CRISPRscope_meta_tbl_filtered %>% 
+  renameSamples() %>% 
+  select(ProjectID, cluster_spacer_identity) %>% 
+  distinct() %>% 
+  left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("cluster_spacer_identity" = "cluster")) %>% 
+  mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
+  select(cluster_spacer_identity, final_hit)
 
-# Genomic blasts
-# mean: 63.02088
-# sd  : 15.49546
+# Geno
+genomic_blast_count <- CRISPRscope_tbl_26 %>% 
+  select(Organism, cluster_spacer_identity) %>% 
+  distinct() %>% 
+  renameOrganism() %>% 
+  left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("cluster_spacer_identity" = "cluster")) %>% 
+  mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
+  select(cluster_spacer_identity, final_hit)
 
-genomic_blast_hits_2 %>% filter(!final_hit == "No hit") %>% 
-  group_by(Organism) %>% summarise(total_hit = sum(HitRatio)) %>% 
-  summarise(mean = mean(total_hit), sd = sd(total_hit))
 
-# Metagenomic blasts
-# mean: 47.40298
-# sd  : 18.00061
+bind_rows(metagenomic_blast_count, genomic_blast_count) %>% distinct() %>% count(final_hit)
+viral = 7936
+plasmid = 835
+bacterial = 4878
 
-metagenomic_blast_hits_2 %>% filter(!final_hit == "No hit") %>% 
-  group_by(ProjectID) %>% summarise(total_hit = sum(HitRatio)) %>% 
-  summarise(mean = mean(total_hit), sd = sd(total_hit))
+no_hit = 9637
+hit = viral + plasmid + bacterial
+tot = hit + no_hit
+
+no_hit/tot
+hit/tot
+
+viral/tot
+
 ```
 
 
@@ -1992,20 +2013,42 @@ sum( cog_categories_sum_T$n) # 859
 
 ```{r fig.height=8, fig.width=12}
 
+# Count arrays per type
+overall_array_type_count <- full_join( CRISPRscope_tbl_26 %>% select(ArrayID, Cas_subtype) %>% distinct() %>% 
+             select(Cas_subtype) %>% count(Cas_subtype),
+           CRISPRscope_meta_tbl_filtered %>% select(SRA_ID, GID, Subtype) %>% distinct() %>% 
+             select(Subtype) %>% count(Subtype) %>% dplyr::rename(Cas_subtype = Subtype),
+           by = c("Cas_subtype")) %>% 
+  replace_na(list(n.x = 0, n.y = 0)) %>% 
+  mutate(n = rowSums(select(.,n.x, n.y))) %>% 
+  select(Cas_subtype, n)
 
+
+# Overall cas type hits
 clst_cas <- bind_rows(CRISPRscope_tbl_26 %>% select(cluster_spacer_identity, Cas_subtype) %>% distinct() %>% 
                         dplyr::rename(clst = cluster_spacer_identity, cas = Cas_subtype),
                       CRISPRscope_meta_tbl_filtered %>% select(cluster_spacer_identity, Subtype) %>% distinct() %>% 
-                        dplyr::rename(clst = cluster_spacer_identity, cas = Subtype)) %>% distinct()
-
+                        dplyr::rename(clst = cluster_spacer_identity, cas = Subtype)) %>% distinct() %>% 
+  left_join(overall_array_type_count, by = c("cas" = "Cas_subtype")) %>% 
+  mutate(cas_count = paste(cas, " (", n, ")", sep="")) %>% 
+  select(clst, cas_count) %>% dplyr::rename(cas = cas_count)
 
 
 BLAST_castype_hit_plot <- clst_cas %>% left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("clst" = "cluster")) %>% mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
+  filter(!final_hit == "CRISPR") %>% 
+  
   group_by(final_hit) %>% 
   count(cas) %>% 
-  ggplot(aes(x=cas, y=n, fill=cas)) +
-  geom_col() +
-  facet_wrap(~final_hit)+  
+  ungroup() %>% 
+  group_by(cas) %>% 
+  mutate(tot = sum(n)) %>% 
+  mutate(fraction = n/tot) %>% 
+  mutate(final_hit = factor(final_hit, levels = c("No hit", "Bacterial", "Plasmid", "Viral"))) %>% 
+  ggplot(aes(x=cas, y=fraction, fill=final_hit)) +
+  geom_col(position = "stack") +
+  scale_y_continuous(labels = scales::percent_format())+
+  scale_fill_manual(values=c("#afd2e9ff", "#9d96b8ff", "#9d6eb8ff", "#9a7197ff")) +
+  #facet_wrap(~final_hit)+  
   theme_bw() +
   theme(
     axis.text.y = element_text(color = "black"),
@@ -2019,7 +2062,7 @@ BLAST_castype_hit_plot <- clst_cas %>% left_join(CRISPRscope_blast_cluster_hit_t
     plot.title = element_text(color = "black"),
     panel.background = element_rect(fill = "white", colour = NA),
     plot.background = element_rect(fill = "white", colour = NA),
-    legend.position = "none",
+    legend.position = "right",
     legend.background = element_rect(fill = "white", colour = NA),
     legend.box.background = element_rect(fill = "white", colour = NA),
     legend.text = element_text(color = "black"),
@@ -2034,7 +2077,7 @@ BLAST_castype_hit_plot <- clst_cas %>% left_join(CRISPRscope_blast_cluster_hit_t
 
 ggsave(
   plot = BLAST_castype_hit_plot,
-  file = paste(google_drive_folder,"/BLAST_castype_hit_plot.pdf", sep=""),
+  file = paste(google_drive_folder,"/BLAST_castype_hit_plot_stack.pdf", sep=""),
   bg = "transparent",
   width = 25,
   height = 20,
@@ -2270,6 +2313,10 @@ aaaplt + bbbplt +
 
 Ce strains are highly specalized and target only a small fraction of the vOTUS 
 
+numbers: strains target on average xx votu
+```{r}
+fraction_votu_per_strain %>% summarise(mean_votu = mean(nb_votus_per_strain)) #10.82332
+```
 
 
 How many spacers does every strain have against one VOTU
@@ -2403,8 +2450,19 @@ votu_total_projects <- CRISPRscope_meta_tbl_filtered %>%
 votu_sterm_project_count <- votu_sterm_projects %>% group_by(ProjectID) %>% 
   summarise(ProjectID = ProjectID, total_spacers_with_sterm_IMG_hit = n(), total_distinct_sterm_votu = n_distinct(vOTU)) %>% distinct()
 
+# Fraction of votu targeted by stherm in thermophilic samples
+stermvotu <- votu_sterm_project_count %>% filter(ProjectID == "Pasolli et al. 2020" | ProjectID == "Swiss starter culture")%>% 
+  mutate(fraction = 100*(total_distinct_sterm_votu/total_spacers_with_sterm_IMG_hit)) 
+mean(stermvotu$fraction)
+sd(stermvotu$fraction)
 
-meta_votu_sterm <- votu_total_projects %>% left_join(votu_sterm_project_count, by=c("ProjectID"))
+# ...
+asdf <- votu_sterm_project_count %>% 
+  mutate(fraction = 100*(total_distinct_sterm_votu/total_spacers_with_sterm_IMG_hit)) 
+sd(asdf$fraction)
+#
+meta_votu_sterm <- votu_total_projects %>% left_join(votu_sterm_project_count, by=c("ProjectID")) %>% 
+  mutate(fraction = total_distinct_sterm_votu/total_spacers_with_sterm_IMG_hit)
 
 
 # TODO: proportion of votu targeted by all projects and all samples

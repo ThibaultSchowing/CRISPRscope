@@ -2244,7 +2244,7 @@ ANI_Shared_spacers_strain_pair_filtered %>%
 
 
 ```{r fig.height=6, fig.width=10}
-
+library(stats)
 ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep="")) %>% 
   #filter(species_query == "Lacticaseibacillus_rhamnosus") %>% 
   mutate(species_query = gsub("_", " ", species_query))
@@ -2258,6 +2258,9 @@ names(cols) <- as.character(ANI_Shared_spacers_strain_pair_filtered$species_quer
 plot_per_species <- ANI_Shared_spacers_strain_pair_filtered  %>% 
   ggplot(aes(x=ANI, y=shared_spacer_numeric, label = rev(species_query))) + 
   geom_point(aes(colour = species_query), size = 0.3, alpha=0.2, show.legend=T) + 
+  #geom_smooth(method='lm', formula = y~x, method.args = list(family = gaussian(link = 'log'))) +
+  #stat_smooth(method = "lm") +
+  stat_cor(p.accuracy = 0.001, r.accuracy = 0.01) +
   scale_color_manual(values=cols) +                                         # Set the color manually to the column values
   scale_y_continuous(trans = "log10") +                          # Y axis on log scale
   ylab("Proportion of shared spacers [%]") +
@@ -2307,16 +2310,16 @@ plot_per_species <-
 #scale_color_discrete(labels = function(x) str_replace(x, "_", " ")) +    # HERE PROBLEM   # Remove the '_' of the species names in plot, not in data
 
 # 
-ggsave(
-  plot = plot_per_species,
-  #file = "./IMG/report2/ANISpacerShared.pdf",
-  file = paste(google_drive_folder, "/ANI_sharedSpacers_plot.jpg", sep=""),
-  bg = "white",
-  width = 25,
-  height = 15,
-  units = "cm",
-  dpi = 800
-)
+# ggsave(
+#   plot = plot_per_species,
+#   #file = "./IMG/report2/ANISpacerShared.pdf",
+#   file = paste(google_drive_folder, "/ANI_sharedSpacers_plot.jpg", sep=""),
+#   bg = "white",
+#   width = 25,
+#   height = 15,
+#   units = "cm",
+#   dpi = 800
+# )
 
 plot_per_species
 ```
@@ -2631,74 +2634,74 @@ what you would need is:
 
 ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
 
-# Function to get 
-get_pair_nbof_shared_seq <- function(strain1str, strain2str){
-
-    strain1_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain1str) %>% select(cluster_spacer_identity)
-    strain1_seq <- strain1_seq$cluster_spacer_identity
-
-    strain2_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain2str) %>% select(cluster_spacer_identity)
-    strain2_seq <- strain2_seq$cluster_spacer_identity
-
-  
-
-  # Percentage of common sequences between the two strains
-  #score <- ((2 * length(intersect(strain1_seq , strain2_seq)))/(length(strain1_seq) + length(strain2_seq)))
-  score <- length(intersect(strain1_seq , strain2_seq))
-
-  return(score)
-}
-
-get_mean_nb_spacers <- function(strain1str, strain2str){
-
-    strain1_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain1str) %>% select(cluster_spacer_identity)
-    strain1_seq <- strain1_seq$cluster_spacer_identity
-
-    strain2_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain2str) %>% select(cluster_spacer_identity)
-    strain2_seq <- strain2_seq$cluster_spacer_identity
-
-
-
-  # Percentage of common sequences between the two strains
-  #score <- ((2 * length(intersect(strain1_seq , strain2_seq)))/(length(strain1_seq) + length(strain2_seq)))
-  #score <- length(intersect(strain1_seq , strain2_seq))
-  score <- mean(length(strain1_seq), length(strain2_seq))
-
-  return(score)
-}
-
-# Compute all shared spacer percent
-
-#ANI_merged_filtered_test <- ANI_merged_filtered %>% top_n(200)
+# # Function to get 
+# get_pair_nbof_shared_seq <- function(strain1str, strain2str){
 # 
-# test_spacer_pair <- subset_test %>% 
-#   mutate(shared_spacers = map2(strain_query, strain_ref, spacer=TRUE, get_pair_shared_seq))
-library(furrr)
-ANI_Shared_numberof_spacers_strain_pair_raw <- ANI_merged_filtered %>% 
-  mutate(nb_shared_spacers = future_map2(strain_query, strain_ref, get_mean_nb_spacers))
-  #mutate(shared_spacers = purrr::pmap(list(strain1, strain2, spacer=TRUE), get_pair_shared_seq)) 
-
-
-# map functions returns listed data, we need to unlist and convert to double.
-# Adjust the scale
-# For plotting, remove the pairwise comparison of same strain. 
-ANI_Shared_numberof_spacers_strain_pair <- ANI_Shared_numberof_spacers_strain_pair_raw %>% 
-  filter(strain_query != strain_ref) %>% 
-  mutate(mean_nb_spacer_numeric = as.numeric(unlist(ANI_Shared_numberof_spacers_strain_pair_raw$nb_shared_spacers))) %>% 
-  #mutate(shared_spacer_numeric = shared_spacer_numeric * 100) %>% 
-  select(-nb_shared_spacers) %>% 
-  mutate(nucleotide_diversity = (bidirectional_fragment_mapping * 1000)*(1/ANI)) %>% 
-  mutate(turnover_rate = nucleotide_diversity/mean_nb_spacer_numeric)
-
-ANI_Shared_numberof_spacers_strain_pair %>% 
-  write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_numberof_spacers_strain_pair.csv", sep=""), row.names=FALSE)
-
-ANI_Shared_numberof_spacers_strain_pair %>% summarise(mean_nt_diversity = mean(nucleotide_diversity), 
-                                                      max_nt_diversity = max(nucleotide_diversity),
-                                                      min_nt_diversity = min(nucleotide_diversity),
-                                                      mean_turnover_rate = mean(turnover_rate), 
-                                                      max_turnover_rate = max(turnover_rate),
-                                                      min_turnover_rate = min(turnover_rate))
+#     strain1_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain1str) %>% select(cluster_spacer_identity)
+#     strain1_seq <- strain1_seq$cluster_spacer_identity
+# 
+#     strain2_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain2str) %>% select(cluster_spacer_identity)
+#     strain2_seq <- strain2_seq$cluster_spacer_identity
+# 
+#   
+# 
+#   # Percentage of common sequences between the two strains
+#   #score <- ((2 * length(intersect(strain1_seq , strain2_seq)))/(length(strain1_seq) + length(strain2_seq)))
+#   score <- length(intersect(strain1_seq , strain2_seq))
+# 
+#   return(score)
+# }
+# 
+# get_mean_nb_spacers <- function(strain1str, strain2str){
+# 
+#     strain1_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain1str) %>% select(cluster_spacer_identity)
+#     strain1_seq <- strain1_seq$cluster_spacer_identity
+# 
+#     strain2_seq <- CRISPRscope_tbl_185 %>% filter(Strain == strain2str) %>% select(cluster_spacer_identity)
+#     strain2_seq <- strain2_seq$cluster_spacer_identity
+# 
+# 
+# 
+#   # Percentage of common sequences between the two strains
+#   #score <- ((2 * length(intersect(strain1_seq , strain2_seq)))/(length(strain1_seq) + length(strain2_seq)))
+#   #score <- length(intersect(strain1_seq , strain2_seq))
+#   score <- mean(length(strain1_seq), length(strain2_seq))
+# 
+#   return(score)
+# }
+# 
+# # Compute all shared spacer percent
+# 
+# #ANI_merged_filtered_test <- ANI_merged_filtered %>% top_n(200)
+# # 
+# # test_spacer_pair <- subset_test %>% 
+# #   mutate(shared_spacers = map2(strain_query, strain_ref, spacer=TRUE, get_pair_shared_seq))
+# library(furrr)
+# ANI_Shared_numberof_spacers_strain_pair_raw <- ANI_merged_filtered %>% 
+#   mutate(nb_shared_spacers = future_map2(strain_query, strain_ref, get_mean_nb_spacers))
+#   #mutate(shared_spacers = purrr::pmap(list(strain1, strain2, spacer=TRUE), get_pair_shared_seq)) 
+# 
+# 
+# # map functions returns listed data, we need to unlist and convert to double.
+# # Adjust the scale
+# # For plotting, remove the pairwise comparison of same strain. 
+# ANI_Shared_numberof_spacers_strain_pair <- ANI_Shared_numberof_spacers_strain_pair_raw %>% 
+#   filter(strain_query != strain_ref) %>% 
+#   mutate(mean_nb_spacer_numeric = as.numeric(unlist(ANI_Shared_numberof_spacers_strain_pair_raw$nb_shared_spacers))) %>% 
+#   #mutate(shared_spacer_numeric = shared_spacer_numeric * 100) %>% 
+#   select(-nb_shared_spacers) %>% 
+#   mutate(nucleotide_diversity = (bidirectional_fragment_mapping * 1000)*(1/ANI)) %>% 
+#   mutate(turnover_rate = nucleotide_diversity/mean_nb_spacer_numeric)
+# 
+# ANI_Shared_numberof_spacers_strain_pair %>% 
+#   write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_numberof_spacers_strain_pair.csv", sep=""), row.names=FALSE)
+# 
+# ANI_Shared_numberof_spacers_strain_pair %>% summarise(mean_nt_diversity = mean(nucleotide_diversity), 
+#                                                       max_nt_diversity = max(nucleotide_diversity),
+#                                                       min_nt_diversity = min(nucleotide_diversity),
+#                                                       mean_turnover_rate = mean(turnover_rate), 
+#                                                       max_turnover_rate = max(turnover_rate),
+#                                                       min_turnover_rate = min(turnover_rate))
 
 
 #===================================
@@ -5109,6 +5112,19 @@ p1 <- sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
 p1
 ```
 
+numbers: How many spacers have edit < 6 ?
+```{r}
+total_pairs <- sorted_results_1 %>% summarise(tot=sum(count)) %>% select(tot) %>% unlist()
+sorted_results_1 %>% filter(Editdistance <= 6) %>% summarise(tot = sum(count))
+678360 / total_pairs * 100
+
+total_identical <- sorted_results_1 %>% filter(Editdistance < 1) %>% summarise(tot = sum(count)) %>% select(tot) %>% unlist()
+
+total_identical / 678360 * 100
+```
+
+
+
 Generated bellow (chapter random verification)
 ```{r}
 
@@ -5318,6 +5334,47 @@ ggsave(
 plt
 
 
+
+```
+# Density plot ANI EDIT<6
+
+```{r}
+
+EDIT_VS_ANI_2 <- inner_join(merged_slices_custom_dist6, 
+                          CRISPRscope_tbl_26 %>% 
+                            select(cluster_spacer_identity, Strain), by = c("clst1" = "cluster_spacer_identity")) %>% 
+  dplyr::rename(Strain1 = Strain) %>% 
+  inner_join(CRISPRscope_tbl_26 %>% 
+               select(cluster_spacer_identity, Strain), by = c("clst2" = "cluster_spacer_identity")) %>% 
+  dplyr::rename(Strain2 = Strain) %>% distinct() %>% 
+  left_join(ANI_Shared_spacers_strain_pair %>% select(strain_query, strain_ref, ANI), by = c("Strain1" = "strain_query", "Strain2" = "strain_ref")) %>% 
+  select(Strain1, Strain2, ANI, EDIT) %>% drop_na()
+
+
+EDIT_VS_ANI_2 %>% filter(EDIT > 1) %>% select(ANI) %>%
+  ggplot(aes(x=ANI)) +
+  geom_density() +
+  ggtitle("ANI VS EDIT of shared spacers. 1 < EDIT < 6 ")
+
+
+# IN SUPPLEMENTARY FIG. 
+EDIT_VS_ANI_2 %>% select(ANI) %>% 
+  ggplot(aes(x=ANI, ..scaled..)) +
+  geom_density() +
+  ggtitle("ANI VS EDIT of shared spacers. 0 < EDIT < 6 ")+
+  theme_classic() +
+  ylab("Density")
+
+ptot <- EDIT_VS_ANI_2 %>% summarise(n = n()) %>% select(n) %>% unlist()
+p995 <- EDIT_VS_ANI_2 %>% filter(ANI > 99.5) %>% summarise(n = n()) %>% select(n) %>% unlist()
+p005 <- EDIT_VS_ANI_2 %>% filter(ANI <= 99.5) %>% summarise(n = n()) %>% select(n) %>% unlist()
+p995/ptot*100
+p005/ptot*100
+
+EDIT_VS_ANI_2 %>% select(ANI, EDIT) %>% filter(EDIT > 1) %>% 
+  ggplot(aes(x=ANI, y=EDIT)) +
+  geom_density_2d_filled() +
+  ggtitle("ANI VS EDIT of shared spacers. 1 < EDIT < 6 ")
 
 ```
 
@@ -5866,7 +5923,46 @@ EDIT_VS_ANI_VS_LEN_V2 %>% ggplot(aes(x=mean_dist, y=sd_dist)) +
 
 
 
+## Comparison with core genome diversity (?)
+```{r}
 
+EDIT_VS_ANI_VS_LEN_V3 <- inner_join(merged_slices_custom_dist6, 
+                          CRISPRscope_tbl_26 %>% 
+                            select(cluster_spacer_identity, Strain, SpacerSeq, rel_dist_leader), by = c("clst1" = "cluster_spacer_identity")) %>% 
+  dplyr::rename(Strain1 = Strain) %>% dplyr::rename(SpacerSeq1 = SpacerSeq) %>%  dplyr::rename(rel_dist_leader1 = rel_dist_leader) %>% 
+  inner_join(CRISPRscope_tbl_26 %>% 
+               select(cluster_spacer_identity, Strain, SpacerSeq, rel_dist_leader), by = c("clst2" = "cluster_spacer_identity")) %>% 
+  dplyr::rename(Strain2 = Strain) %>% dplyr::rename(SpacerSeq2 = SpacerSeq) %>%   dplyr::rename(rel_dist_leader2 = rel_dist_leader) %>% 
+  distinct() %>% 
+  left_join(ANI_Shared_spacers_strain_pair %>% select(strain_query, strain_ref, ANI), by = c("Strain1" = "strain_query", "Strain2" = "strain_ref")) %>% 
+  mutate(len1 = nchar(SpacerSeq1), 
+         len2 = nchar(SpacerSeq2), 
+         EDIT_len = 100*(EDIT/mean(c(len1,len2))), 
+         ANI_100 = 100-ANI, 
+         mean_dist = mean(c(rel_dist_leader1, rel_dist_leader2)), 
+         sd_dist = sd(c(rel_dist_leader1, rel_dist_leader2))) %>% 
+  select(EDIT_len, ANI_100, mean_dist) %>% 
+  filter(EDIT_len > 0.5) %>% 
+  filter(ANI_100 > 0) %>% 
+  mutate(ratio = EDIT_len/ANI_100) %>% 
+  select(-mean_dist)
+
+
+EDIT_VS_ANI_VS_LEN_V3 %>% write_csv(file=paste(data_folder, "/tmp_EDIT_ANI_ratio.csv", sep=""))
+
+
+
+  #select(Strain1, Strain2, ANI, EDIT) %>% drop_na()
+
+plt3 <- EDIT_VS_ANI_VS_LEN_V3 %>% ggplot(aes(x=ratio)) +
+  geom_density(color="#a5c2bb", alpha=.4) +
+  theme_classic() +
+  xlab("") +
+  ylab("")
+
+EDIT_VS_ANI_VS_LEN_V3
+plt3
+```
 
 
 

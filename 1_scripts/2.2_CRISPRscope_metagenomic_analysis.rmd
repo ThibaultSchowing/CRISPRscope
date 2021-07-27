@@ -104,7 +104,7 @@ renameSamples <- function(imput_tibble) {
 #CRISPRscope_meta_tbl_filtered %>% filter(ProjectID == "PRJNA286900") %>% select(spacer_per_milread) %>% distinct()
 
 
-CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID) %>% distinct() %>% group_by(ProjectID) %>% summarise(n = n())
+CRISPRscope_meta_tbl_filtered %>% renameSamples %>% select(ProjectID, SRA_ID) %>% distinct() %>% group_by(ProjectID) %>% summarise(n = n())
 
 ```
 
@@ -168,6 +168,8 @@ metaData_updated <- sample_crispr_content %>%
   arrange(ProjectID, SRA_ID)
 
 metaData_updated %>% write.csv(paste(data_folder, "/IMPORT/metadata/CRISPRscope_meta_Project_Sample_MANUAL_METADATA_updated.csv", sep=""))
+
+metaData_updated
 
 ```
 
@@ -1002,8 +1004,8 @@ plot2
 plot3
 
 ggsave(
-  plot = plot3,
-  file = paste(google_drive_folder,"/Spacer_protospacer_facets_projectid.png", sep = ""),
+  plot = plot2,
+  file = paste(google_drive_folder,"/Spacer_protospacer_facets_castype.pdf", sep = ""),
   bg = "white",
   width = 30,
   height = 15,
