@@ -52,7 +52,7 @@ library(ggpubr)
 ```{r}
 
 repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
-google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
 data_folder <- "C:/Users/thsch/Desktop/0_data"
 
 ```
@@ -165,139 +165,102 @@ species_levels_21_abrv <- list("Lhelv", "Laci", "Ldel", "Lrham", "Lcas", "Lcur",
 
 
 #----------------------
-# Venn diagram 100% similarity clustering - repeats
+#TODO Venn diagram 80% similarity clustering
 
- 100% modify
+```{r}
+# Read 80% cluster files
+# ADD IDENTITY FOR DISTRIBUTION
+Clusters0_8_CRISPRscope_ALL_REPEATS <- read_csv("C:/Users/thsch/Desktop/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_ALL_REPEATS.csv") %>% 
+  select(-seqid)
+Clusters0_8_CRISPRscope_ALL_SPACERS <- read_csv("C:/Users/thsch/Desktop/0_data/IMPORT/clustering/Clusters0.8_CRISPRscope_ALL_SPACERS.csv") %>% 
+  select(-seqid)
 
-```{r eval=F}
+Clusters0_8_CRISPRscope_ALL_REPEATS %>% 
+  mutate(identity = abs(identity)) %>% 
+  mutate(identity = ifelse(identity == 1.00, 100, identity)) %>% distinct() %>% 
+  ggplot(aes(x=identity)) +
+  geom_density() + 
+  xlab("Repeat percentage identity within clusters") +
+  ylab("Density") 
 
-# Clusters_CRISPRscope_ALL_REPEATS <- read_csv("../0_data/clustering/Clusters1_CRISPRscope_ALL_REPEATS.csv")
-# 
-# Clusters_CRISPRscope_ALL_REPEATS <- Clusters_CRISPRscope_ALL_REPEATS %>% select(seqid, cluster)
-# 
-# 
-# # Remove clusters that are not anymore in the datasets (late quality filtering)
-# list_clusters <- CRISPRscope_meta_tbl_filtered %>% select(cluster_repeat_identity) %>% 
-#   bind_rows(CRISPRscope_tbl_26 %>% select(cluster_repeat_identity)) %>% distinct() %>% unlist()
-# 
-# Clusters_CRISPRscope_ALL_REPEATS <- Clusters_CRISPRscope_ALL_REPEATS %>% filter(cluster %in% list_clusters)
-# 
-# 
-# 
-# clst_G <- Clusters_CRISPRscope_ALL_REPEATS %>% filter(grepl("^G_", seqid)) %>% select(cluster) %>% distinct(cluster)
-# clst_M <- Clusters_CRISPRscope_ALL_REPEATS %>% filter(grepl("^M_", seqid)) %>% select(cluster) %>% distinct(cluster)
-# 
-# 
-# 
-# x <- list(
-#   A = length(clst_G$cluster),
-#   B = length(clst_M$cluster),
-#   C = length(intersect(clst_G$cluster,clst_M$cluster))
-# )
-# 
-# grid.newpage()
-# venn.plot <- draw.pairwise.venn(area1 = x[[1]], area2 = x[[2]], cross.area = x[[3]], category = c("Genome wide repeats", 
-#     "Metagenome wide repeats"), lty = rep("blank", 2), fill = c("light blue", "light green"), 
-#     alpha = c(0.4, 0.4), cat.pos = c(18, 180), euler.d = TRUE, sep.dist = 0.03, cex = c(3,4,4), cat.cex = c(2,2),
-#     rotation.degree = 0)
-# # Writing to file
-# 
-# 
-# tiff(filename = "./IMG/report/12_2_RepeatsMG100percent.tiff", width = 660, height = 660);
-# grid.draw(venn.plot);
-# dev.off();
-# 
-# #img <- readTIFF("./IMG/report/SpacerMG100percent.tiff", native=TRUE)
-# #writeJPEG(img, target = "./IMG/report/SpacerMG100percent.jpeg", quality = 1)
-# 
-# img <- image_read("./IMG/report/12_2_RepeatsMG100percent.tiff")
-# image_write(img, format = "pdf", "./IMG/report/12_2_RepeatsMG100percent.pdf")
-# 
-# fn <- "./IMG/report/12_2_RepeatsMG80percent.tiff"
-# if (file.exists(fn)) {
-#   #Delete file if it exists
-#   file.remove(fn)
-# }
+Clusters0_8_CRISPRscope_ALL_SPACERS %>% 
+  mutate(identity = abs(identity)) %>% 
+  mutate(identity = ifelse(identity == 1.00, 100, identity)) %>% distinct()%>% 
+  ggplot(aes(x=identity)) +
+  geom_density() + 
+  xlab("Spacer percentage identity within clusters") +
+  ylab("Density") 
+
+
+# Add spacer and repeat 80% clusters to tmp datasets
+
+
+tmp_tbl_185 <- CRISPRscope_tbl_185 %>% select(SpacerSeq, DR_seq) %>% 
+  left_join(Clusters0_8_CRISPRscope_ALL_SPACERS, by=c("SpacerSeq" = "seq")) %>% 
+  dplyr::rename(cluster_spacer_80 = cluster) %>% dplyr::rename(clst80_spacer_identity = identity) %>% 
+  left_join(Clusters0_8_CRISPRscope_ALL_REPEATS, by=c("DR_seq" = "seq")) %>% 
+  dplyr::rename(cluster_repeat_80 = cluster) %>% dplyr::rename(clst80_repeat_identity = identity) %>% 
+  drop_na() # no na !! :-)
+
+
+tmp_tbl_26 <- CRISPRscope_tbl_26 %>% select(SpacerSeq, DR_seq) %>% 
+  left_join(Clusters0_8_CRISPRscope_ALL_SPACERS, by=c("SpacerSeq" = "seq")) %>% 
+  dplyr::rename(cluster_spacer_80 = cluster) %>% dplyr::rename(clst80_spacer_identity = identity) %>% 
+  left_join(Clusters0_8_CRISPRscope_ALL_REPEATS, by=c("DR_seq" = "seq")) %>% 
+  dplyr::rename(cluster_repeat_80 = cluster) %>% dplyr::rename(clst80_repeat_identity = identity) %>% 
+  drop_na() 
+
+
+tmp_tbl_meta <- CRISPRscope_meta_tbl_filtered %>% select(spacer_seq, repeat_seq) %>% 
+  left_join(Clusters0_8_CRISPRscope_ALL_SPACERS, by=c("spacer_seq" = "seq")) %>% 
+  dplyr::rename(cluster_spacer_80 = cluster) %>% dplyr::rename(clst80_spacer_identity = identity) %>% 
+  left_join(Clusters0_8_CRISPRscope_ALL_REPEATS, by=c("repeat_seq" = "seq")) %>% 
+  dplyr::rename(cluster_repeat_80 = cluster) %>% dplyr::rename(clst80_repeat_identity = identity) %>% 
+  drop_na() 
+
+
+
+# LISTS - SPACERS
+
+S1_80_G185 <- tmp_tbl_185 %>% select(cluster_spacer_80) %>% distinct() %>% unlist()
+S2_80_G26 <- tmp_tbl_26 %>% select(cluster_spacer_80) %>% distinct() %>% unlist()
+S3_80_M <- tmp_tbl_meta %>% select(cluster_spacer_80) %>% distinct() %>% unlist()
+
+
+S1_80_G185 %>% write.table(file=paste(data_folder, "/EXPORT/list_S1_80_G185.csv", sep=""), row.names=FALSE, col.names = FALSE)
+S2_80_G26 %>% write.table(file = paste(data_folder, "/EXPORT/list_S1_80_G26.csv", sep=""), row.names=FALSE, col.names = FALSE)
+S3_80_M %>% write.table(file = paste(data_folder, "/EXPORT/list_S3_80_M.csv", sep=""), row.names=FALSE, col.names = FALSE)
+
+
+R1_80_G185 <- tmp_tbl_185 %>% select(cluster_repeat_80) %>% distinct() %>% unlist()
+R2_80_G26 <- tmp_tbl_26 %>% select(cluster_repeat_80) %>% distinct() %>% unlist()
+R3_80_M <- tmp_tbl_meta %>% select(cluster_repeat_80) %>% distinct() %>% unlist()
+
+
+R1_80_G185 %>% write.table(file=paste(data_folder, "/EXPORT/list_R1_80_G185.csv", sep=""), row.names=FALSE, col.names = FALSE)
+R2_80_G26 %>% write.table(file = paste(data_folder, "/EXPORT/list_R1_80_G26.csv", sep=""), row.names=FALSE, col.names = FALSE)
+R3_80_M %>% write.table(file = paste(data_folder, "/EXPORT/list_R3_80_M.csv", sep=""), row.names=FALSE, col.names = FALSE)
+
 ```
 
 
 
-```{r eval=F, fig.height=8, fig.width=12}
-
-# Clusters_CRISPRscope_ALL_SPACERS <- read_csv("../0_data/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv") # 79'421 rows
+BIN
+```{r}
+# A1_80 <- length(S1_80_G185)
+# A2_80 <- length(S2_80_G26)
+# A3_80 <- length(S3_80_M)
 # 
-# Clusters_CRISPRscope_ALL_SPACERS <- Clusters_CRISPRscope_ALL_SPACERS %>% select(seqid, cluster)
+# S_80_12 <- intersect(S1_80_G185, S2_80_G26)
+# S_80_23 <- intersect(S2_80_G26, S3_80_M)
+# S_80_13 <- intersect(S1_80_G185, S3_80_M)
+# S_80_123 <- intersect(S_80_12, S3_80_M)
 # 
-# 
-# 
-# # Remove clusters that are not anymore in the datasets (late quality filtering)
-# list_clusters <- CRISPRscope_meta_tbl_filtered %>% select(cluster_spacer_identity) %>% 
-#   bind_rows(CRISPRscope_tbl_26 %>% select(cluster_spacer_identity)) %>% distinct() %>% unlist()
-# 
-# Clusters_CRISPRscope_ALL_SPACERS <- Clusters_CRISPRscope_ALL_SPACERS %>% filter(cluster %in% list_clusters)
-# 
-# 
-# 
-# clst_G <- Clusters_CRISPRscope_ALL_SPACERS %>% filter(grepl("^G_", seqid)) %>% select(cluster) %>% distinct(cluster) #185: 56'614 / 26: 16'471
-# clst_M <- Clusters_CRISPRscope_ALL_SPACERS %>% filter(grepl("^M_", seqid)) %>% select(cluster) %>% distinct(cluster) # 7'642
-# 
-# 
-# # Control ============== PROBLEM HERE ================ 
-# #
-# # Spacer number are not the same between the set coming from the csv cluster file (all spacers + old ones)
-# # than from the two datasets (genomes + metagenomes). 
-# 
-# CRISPRscope_meta_tbl_filtered %>% select(cluster_spacer_identity) %>% distinct() # 7'622 -> missing 20
-# CRISPRscope_tbl_185 %>% select(cluster_spacer_identity) %>% distinct()           # 56'614
-# CRISPRscope_tbl_26 %>% select(cluster_spacer_identity) %>% distinct()           # 16'332 -> missing ... like a hundred
-# 
-# # differences between the two 26-genomic sets
-# set_G <- Clusters_CRISPRscope_ALL_SPACERS %>% filter(grepl("^G_", seqid)) %>% select(cluster) %>% distinct(cluster) # set list above to 26
-# set_26 <- CRISPRscope_tbl_26 %>% select(cluster_spacer_identity) %>% distinct()
-# 
-# 
-# outersect <- function(x, y) {
-#   sort(c(setdiff(x, y),
-#          setdiff(y, x)))
-# }
-# cluster_outersect_list <- outersect(set_G$cluster, set_26$cluster_spacer_identity)
-# 
-# CRISPRscope_tbl_185 %>% filter(cluster_spacer_identity %in% cluster_outersect_list) %>% dplyr::count(SpacerSeq)
-# 
-# 
-# 
-# 
-# x <- list(
-#   A = length(clst_G$cluster),
-#   B = length(clst_M$cluster),
-#   C = length(intersect(clst_G$cluster,clst_M$cluster))
-# )
-# 
-# grid.newpage()
-# venn.plot <- draw.pairwise.venn(area1 = x[[1]], area2 = x[[2]], cross.area = x[[3]], category = c("Genome wide spacers", 
-#     "Metagenome wide spacers"), lty = rep("blank", 2), fill = c("light blue", "light green"), 
-#     alpha = c(0.4, 0.4), cat.pos = c(0, 180), euler.d = TRUE, sep.dist = 0.03, cex = c(3,3,3), cat.cex = c(2,2),
-#     rotation.degree = 0)
-# # Writing to file
-# 
-# 
-# tiff(filename = "./IMG/report/12_2_SpacersMG100percent.tiff", width = 860, height = 660);
-# grid.draw(venn.plot);
-# dev.off();
-# 
-# #img <- readTIFF("./IMG/report/SpacerMG100percent.tiff", native=TRUE)
-# #writeJPEG(img, target = "./IMG/report/SpacerMG100percent.jpeg", quality = 1)
-# 
-# img <- image_read("./IMG/report/12_2_SpacersMG100percent.tiff")
-# image_write(img, format = "pdf", "./IMG/report/12_2_SpacersMG100percent.pdf")
-# 
-# fn <- "./IMG/report/12_2_SpacersMG80percent.tiff"
-# if (file.exists(fn)) {
-#   #Delete file if it exists
-#   file.remove(fn)
-# }
+# A_80_12 <- length(S_80_12)
+# A_80_23 <- length(S_80_23)
+# A_80_13 <- length(S_80_13)
+# A_80_123 <- length(S_80_123)
 ```
-
 
 
 #----------------------
@@ -1235,12 +1198,12 @@ CRISPRblast_PLSDB_2 # 3,467
 CRISPRblast_2 <- bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>% 
   group_by(qseqid) %>% 
   summarise(cluster = qseqid, hit_type = hit_type) %>% 
-  mutate(final_hit = ifelse(cluster %in% CRISPR_hits_list, "CRISPR", "")) %>% # Assign CRISPR first.
   mutate(final_hit = ifelse("Viral" %in% hit_type %>% unlist(), 
                             "Viral", 
                             ifelse("Plasmid" %in% hit_type %>% unlist(),
                                    "Plasmid",
                                    "Bacterial"))) %>% 
+  mutate(final_hit = ifelse(cluster %in% CRISPR_hits_list, "CRISPR", final_hit)) %>% # Assign CRISPR 
   ungroup() %>% 
   select(cluster, final_hit) %>% 
   distinct()
@@ -1273,8 +1236,9 @@ CRISPRscope_blast_cluster_hit_type_2_completed <- bind_rows(CRISPRscope_blast_cl
                                                             all_crisprscope_clusters %>% 
                                                               filter(!cluster_spacer_identity %in% CRISPRscope_blast_cluster_hit_type_2$cluster) %>% 
                                                               mutate(final_hit = "No hit") %>% 
-                                                              dplyr::rename(cluster = cluster_spacer_identity)) %>% 
-  mutate(final_hit = ifelse(final_hit == "CRISPR", "No hit", final_hit))
+                                                              dplyr::rename(cluster = cluster_spacer_identity)) %>% # 24'105 No hit added
+  mutate(final_hit = ifelse(final_hit == "CRISPR", "No hit", final_hit)) # They hit themselves, they are not target, they are query. 
+                                                                         # However they shouldn't be removed -> still unknown target.
 
 CRISPRscope_blast_cluster_hit_type_2_completed  %>% select(final_hit) %>% distinct()
 
@@ -1294,6 +1258,8 @@ hit_type_order_2 <- c("No hit" ,"Bacterial",  "Plasmid", "Viral")
 #   separate(sseqid, into = c("DB1","accessionID1", "DB2", "accessionID2"), sep = "[|]", remove = F) %>% 
 #   write_csv(file = paste(data_folder, "/EXPORT/BLAST_Bacterial_hits_target_id.csv", sep=""))
 
+
+
 ```
 
 
@@ -1303,30 +1269,6 @@ hit_type_order_2 <- c("No hit" ,"Bacterial",  "Plasmid", "Viral")
 # Genomic
 #
 
-# # TBR
-# CRISPRscope_tbl_26 %>% 
-#   renameOrganism() %>% 
-#   filter(Organism == "Bani") %>% 
-#   select(Organism, cluster_spacer_identity) %>% count(Organism) # 2409 spacers
-# 
-# CRISPRscope_tbl_26 %>% 
-#   renameOrganism() %>% 
-#   filter(Organism == "Bani") %>% 
-#   select(Organism, cluster_spacer_identity) %>% 
-#   distinct() %>% count(Organism) # 606 distinct spacers
-# 
-# CRISPRscope_tbl_26 %>% 
-#   renameOrganism() %>% 
-#   filter(Organism == "Ccas") %>% 
-#   select(Organism, cluster_spacer_identity) %>% count(Organism) # 205 spacers
-# 
-# CRISPRscope_tbl_26 %>% 
-#   renameOrganism() %>% 
-#   filter(Organism == "Ccas") %>% 
-#   select(Organism, cluster_spacer_identity) %>% 
-#   distinct() %>% count(Organism) # 140 distinct spacers
-# 
-# # TBR
 
 # Species order (highest to lowest number of hits)
 
@@ -1349,8 +1291,8 @@ genomic_blast_hits_2 <- CRISPRscope_tbl_26 %>%
   select(Organism, cluster_spacer_identity) %>% 
   distinct() %>% 
   renameOrganism() %>% 
-  left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("cluster_spacer_identity" = "cluster")) %>% 
-  mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
+  left_join(CRISPRscope_blast_cluster_hit_type_2_completed, by = c("cluster_spacer_identity" = "cluster")) %>% 
+  #mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
   group_by(Organism) %>% mutate(total_cluster = n()) %>% ungroup() %>% 
   mutate(Organism = paste(Organism, " (", total_cluster , ")")) %>% 
   group_by(Organism, final_hit) %>% 
@@ -1388,8 +1330,8 @@ metagenomic_blast_hits_2 <- CRISPRscope_meta_tbl_filtered %>%
   renameSamples() %>% 
   select(ProjectID, cluster_spacer_identity) %>% 
   distinct() %>% 
-  left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("cluster_spacer_identity" = "cluster")) %>% 
-  mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
+  left_join(CRISPRscope_blast_cluster_hit_type_2_completed, by = c("cluster_spacer_identity" = "cluster")) %>% 
+  #mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
   group_by(ProjectID) %>% mutate(total_cluster = n()) %>% ungroup() %>% 
   group_by(ProjectID, final_hit) %>% 
   summarise(ProjectID = ProjectID, HitCount = n(), Total_cluster = total_cluster, HitRatio = 100*(HitCount/Total_cluster)) %>% 
@@ -1426,8 +1368,8 @@ metagenomic_blast_count <- CRISPRscope_meta_tbl_filtered %>%
   renameSamples() %>% 
   select(ProjectID, cluster_spacer_identity) %>% 
   distinct() %>% 
-  left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("cluster_spacer_identity" = "cluster")) %>% 
-  mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
+  left_join(CRISPRscope_blast_cluster_hit_type_2_completed, by = c("cluster_spacer_identity" = "cluster")) %>% 
+  #mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
   select(cluster_spacer_identity, final_hit)
 
 # Geno
@@ -1435,8 +1377,8 @@ genomic_blast_count <- CRISPRscope_tbl_26 %>%
   select(Organism, cluster_spacer_identity) %>% 
   distinct() %>% 
   renameOrganism() %>% 
-  left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("cluster_spacer_identity" = "cluster")) %>% 
-  mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
+  left_join(CRISPRscope_blast_cluster_hit_type_2_completed, by = c("cluster_spacer_identity" = "cluster")) %>% 
+  #mutate(final_hit = replace_na(final_hit, "No hit")) %>% 
   select(cluster_spacer_identity, final_hit)
 
 
@@ -1453,6 +1395,12 @@ no_hit/tot
 hit/tot
 
 viral/tot
+bacterial/tot
+plasmid/tot
+no_hit/tot
+
+# COG L / replication repair
+74/bacterial
 
 ```
 
@@ -1466,7 +1414,7 @@ blast_meta_plot <- metagenomic_blast_hits_2  %>%
   geom_col(stat="identity") +
   coord_flip() + # supplementary figure -> difference between species / overall 40-50% of target unknown
   #scale_fill_manual(values = c("darkgoldenrod2", "cyan2" ,"cyan2","cyan2","cyan2","grey"))
-  scale_fill_manual(values = c("grey","darkorchid","darkorchid4","mediumorchid", "palevioletred3"))+  
+  scale_fill_manual(values = c("#afd2e9ff","#9d96b8ff","#9d6eb8ff","#9a7197ff"))+  
   scale_x_discrete(labels = function(x) str_replace(x, "_", " "), limits=rev) +
   theme_bw() +
   theme(
@@ -1523,7 +1471,7 @@ blast_genomes_plot <- genomic_blast_hits_2  %>%
   geom_col(stat="identity") +
   coord_flip() + # supplementary figure -> difference between species / overall 40-50% of target unknown
   #scale_fill_manual(values = c("darkgoldenrod2", "cyan2" ,"cyan2","cyan2","cyan2","grey"))
-  scale_fill_manual(values = c("grey","darkorchid","darkorchid4","mediumorchid", "palevioletred3"))+  
+  scale_fill_manual(values = c("#afd2e9ff","#9d96b8ff","#9d6eb8ff","#9a7197ff"))+  
   scale_x_discrete(labels = function(x) str_replace(x, "_", " "), limits=rev) +
   theme_bw() +
   theme(
@@ -1604,6 +1552,8 @@ hit_plt_2$final_hit <- factor(hit_plt_2$final_hit, levels = c("No hit","CRISPR",
 hit_plt_2 <- hit_plt_2 %>% arrange(name)
 
 
+#hit_plt_2 %>% write_csv(file = paste("./hit_plot_combined_numbers.csv", sep=""), col_names = T)
+
 ```
 
 Super usefull page: https://mattherman.info/blog/fix-facet-width/
@@ -1615,7 +1565,7 @@ plt_gm_blast <- hit_plt_2 %>%
   geom_col() +
   #coord_flip() + # supplementary figure -> difference between species / overall 40-50% of target unknown
   #scale_fill_manual(values = c("darkgoldenrod2", "cyan2" ,"cyan2","cyan2","cyan2","grey"))
-  scale_fill_manual(values = c("grey","darkorchid","darkorchid4","mediumorchid", "palevioletred3"))+  
+  scale_fill_manual(values = c("#afd2e9ff","#9d96b8ff","#9d6eb8ff","#9a7197ff"))+  
   theme_bw() +
   theme(
     axis.text.y = element_text(hjust = 1,color = "black",size = 12,face = "italic"),
@@ -1661,6 +1611,17 @@ ggsave(
 
 ```
 
+Get the values (numbers)
+```{r}
+genomic_tmp = genomic_blast_hits_2
+metagenomic_tmp = metagenomic_blast_hits_2
+
+bind_rows(genomic_tmp %>% dplyr::rename(name = Organism),
+          metagenomic_tmp %>% dplyr::rename(name = ProjectID)) %>% write_csv(file = "../../export_fig4A_values.csv")
+```
+
+
+
 
 #----------------------------------------------
 # BLAST: nr
@@ -1701,7 +1662,7 @@ BLASTnr_sseqid_qseqid %>% write_delim(file = paste(data_folder, "/EXPORT/BLASTnr
 
 Protein fasta sequences were then downloaded from NCBI (via entrez results) and sent to Eggnog-mapper (http://eggnog-mapper.embl.de/)
 
-# TODO: eggnog results
+# eggnog results
 
 ```{r}
 MM_ug5vlsop_emapper_annotations <- read_delim(paste(data_folder, "/Eggnog_results/MM_ug5vlsop.emapper.annotations.tsv", sep=""), 
@@ -2011,6 +1972,7 @@ sum( cog_categories_sum_T$n) # 859
 
 # BLAST cas types
 
+
 ```{r fig.height=8, fig.width=12}
 
 # Count arrays per type
@@ -2088,6 +2050,19 @@ ggsave(
 BLAST_castype_hit_plot
 
 ```
+
+
+average plasmid per subtype
+```{r}
+d <- clst_cas %>% left_join(CRISPRscope_blast_cluster_hit_type_2, by = c("clst" = "cluster")) %>% mutate(final_hit = replace_na(final_hit, "No hit")) 
+
+d %>% count(cas, final_hit) %>% group_by(cas) %>% mutate(total = sum(n)) %>% group_by(final_hit) %>% summarise(average_nbspacer_type = mean(n/total), sd_nbspacer_type = sd(n/total))
+
+
+```
+
+
+
 #TODO relative abundance of y axis. Per type.
 stacked barchart / all in one figure !
 
@@ -2398,6 +2373,14 @@ megagenomic_project_sample_votu %>% mutate(sterm = ifelse(vOTU %in% votu_in_whic
   # To have 'per project' add %>% select(ProjectID, total_sterm_in_imgvr, total_votu_sterm_project, fraction_project) %>% distinct()
 
 metagenomic_votu_sterm = read_csv(file = paste(data_folder, "/EXPORT/VOTUs_metagenomes_per_sample.csv", sep=""))
+
+
+# How many votu does one spacer target
+joined_IMGVR %>% select(qseqid, vOTU) %>% distinct() %>%
+  group_by(qseqid) %>% 
+  summarise(n_target_votu = n()) %>% 
+  count(n_target_votu)
+
 ```
 
 
@@ -2416,6 +2399,15 @@ votu_sterm_projects <- CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_I
   drop_na() %>% 
   renameSamples() %>% 
   left_join(joined_IMGVR %>% select(vOTU, Taxonomic.classification) %>% distinct(), by=c("vOTU")) %>% 
+  distinct()
+
+# Total sterm votu targeted by our metagenomes: 135
+votu_sterm_projects %>% select(vOTU) %>% distinct()
+
+# Total sterm votu in IMGVR: 225
+joined_IMGVR_hosts %>% 
+  filter(HostSpecies == "Streptococcus thermophilus") %>% 
+  select(vOTU) %>% 
   distinct()
 
 
@@ -2451,14 +2443,16 @@ votu_sterm_project_count <- votu_sterm_projects %>% group_by(ProjectID) %>%
   summarise(ProjectID = ProjectID, total_spacers_with_sterm_IMG_hit = n(), total_distinct_sterm_votu = n_distinct(vOTU)) %>% distinct()
 
 # Fraction of votu targeted by stherm in thermophilic samples
-stermvotu <- votu_sterm_project_count %>% filter(ProjectID == "Pasolli et al. 2020" | ProjectID == "Swiss starter culture")%>% 
+stermvotu <- votu_sterm_project_count %>% filter(ProjectID == "Walsh et al. 2020" | ProjectID == "Swiss starter culture" | ProjectID == "Swiss raclette")%>% 
   mutate(fraction = 100*(total_distinct_sterm_votu/total_spacers_with_sterm_IMG_hit)) 
-mean(stermvotu$fraction)
-sd(stermvotu$fraction)
+mean(stermvotu$fraction) #19.03
+sd(stermvotu$fraction)   # 8.35
 
 # ...
 asdf <- votu_sterm_project_count %>% 
   mutate(fraction = 100*(total_distinct_sterm_votu/total_spacers_with_sterm_IMG_hit)) 
+
+
 sd(asdf$fraction)
 #
 meta_votu_sterm <- votu_total_projects %>% left_join(votu_sterm_project_count, by=c("ProjectID")) %>% 
@@ -2499,11 +2493,11 @@ all_meta_votu <- CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, clu
 
 
 ```{r}
-CRISPR_spacer_coverage <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""), col_names = T)
+CRISPR_spacer_coveragez <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/DR_SP_DR_results_zeroes.csv", sep=""), col_names = T)
 
 # Firstly, get cluster number from Spacer ID
 
-drspdr <- CRISPR_spacer_coverage %>% left_join(CRISPRscope_meta_tbl_filtered %>% 
+drspdr <- CRISPR_spacer_coveragez %>% left_join(CRISPRscope_meta_tbl_filtered %>% 
                                                  unite(spacer_name, ProjectID, SRA_ID, GID, SPID, Coverage, sep="_") %>% 
                                                  select(spacer_name, cluster_spacer_identity), by = c("spacer_name") )
 
@@ -2516,9 +2510,13 @@ CRISPRscope_meta_tbl_filtered %>% filter(GID == "G15")
 #meta_hit_type_id <- bind_rows(meta_hits, meta_no_hits) %>% select(qseqid, hit_type) %>% distinct()
 
 
+# Vincent
+drspdr %>% right_join(CRISPRscope_blast_cluster_hit_type_2_completed, by = c("cluster_spacer_identity" = "cluster"))
+
 
 drspdr_hit <- drspdr %>% left_join(CRISPRscope_blast_cluster_hit_type_2_completed, by = c("cluster_spacer_identity" = "cluster"))
-
+#View(drspdr_hit)
+drspdr_hit %>% write_csv(file="./meta_sp_protosp_coverage_hits.csv")
 
 
 ```
@@ -2581,15 +2579,15 @@ plot <-
   facet_wrap(~final_hit)
 
 
-ggsave(
-  plot = plot,
-  file = paste(google_drive_folder, "/15_SpacerProtospacerAbundance_HIT_TYPE.pdf", sep = ""),
-  bg = "white",
-  width = 15,
-  height = 25,
-  units = "cm",
-  dpi = 800
-)
+# ggsave(
+#   plot = plot,
+#   file = paste(google_drive_folder, "/15_SpacerProtospacerAbundance_HIT_TYPE.pdf", sep = ""),
+#   bg = "white",
+#   width = 15,
+#   height = 25,
+#   units = "cm",
+#   dpi = 800
+# )
 
 plot
 ```
@@ -2698,6 +2696,14 @@ plot
 
 
 #----------------------------------------------
+
+
+
+
+
+
+
+
 #----------------------------------------------
 # Numbers Results 
 
@@ -2948,6 +2954,42 @@ Clusters_CRISPRscope_ALL_SPACERS <- read_csv(paste(data_folder, "/IMPORT/cluster
 
 
 
+# Nb Spacer per Cas type
+
+```{r fig.height=8, fig.width=12}
+
+d1 <- bind_rows(
+  CRISPRscope_tbl_26 %>% select(ArrayID, Cas_subtype) %>% dplyr::rename(Array = ArrayID),
+  CRISPRscope_meta_tbl_filtered_renamed %>% unite("Array", SRA_ID:GID, sep="_") %>% select(Array, Subtype) %>% 
+    dplyr::rename(Cas_subtype = Subtype)
+) %>% 
+  count(Array, Cas_subtype) %>% 
+  select(Cas_subtype, n)
+
+
+plt_arrsz <- d1 %>% 
+  ggplot() +
+  geom_density_ridges(aes(x = n, y = Cas_subtype), scale = 1, fill = "cornflowerblue") +
+  geom_jitter(aes(x=n, y=Cas_subtype), size=0.3, alpha=0.4)+
+  theme_bw() +
+  xlab("Array size") +
+  ylab("Cas subtype")
+  
+  
+
+
+plt_dsty <- ggdensity(d1, x = "n", add = "mean") + 
+  xlab("")+
+  ylab("")+
+  xlim(c(0,280))
+
+
+g_arrsz <- egg::ggarrange(
+  plt_dsty, plt_arrsz,
+  nrow = 2, ncol = 1, heights = c(1, 6), widths = c(1)
+)
+
+```
 
 
 

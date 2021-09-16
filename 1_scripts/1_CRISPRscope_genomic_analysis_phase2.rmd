@@ -77,7 +77,8 @@ library(furrr)
 ```{r}
 
 repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
-google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+#"C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
 
 # repository/0_data/IMPORT has to stay this way, like many other folders. 
 
@@ -833,7 +834,12 @@ species_levels_21 <- species_levels_21$species_levels_26
   CRISPRscope_tbl_26 %>% distinct(cluster_repeat)           # 40 cluster representative (80 %)
 
 
-
+# How many repeats do subtypes have
+  tmp <- CRISPRscope_tbl_26 %>% 
+    select(Cas_subtype, cluster_repeat) %>% distinct() %>% 
+    count(Cas_subtype) %>% select(n) %>% unlist() 
+  tmp %>% mean()
+  tmp %>% sd()
 
 
 # From the 26 species, how many do not contain crispr
@@ -2325,6 +2331,100 @@ plot_per_species
 ```
 
 
+#TODO slope glm
+
+redo the plot without logscale but with geom-smooth
+```{r fig.height=6, fig.width=10}
+library(stats)
+ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep="")) %>% 
+  #filter(species_query == "Lacticaseibacillus_rhamnosus") %>% 
+  mutate(species_query = gsub("_", " ", species_query))
+
+
+cols <- as.character(ANI_Shared_spacers_strain_pair_filtered$col)
+names(cols) <- as.character(ANI_Shared_spacers_strain_pair_filtered$species_query)
+
+
+
+plot_per_species <- ANI_Shared_spacers_strain_pair_filtered  %>% 
+  ggplot(aes(x=ANI, y=shared_spacer_numeric, label = rev(species_query))) + 
+  geom_point(aes(colour = species_query), size = 0.3, alpha=0.2, show.legend=T) + 
+  #geom_smooth(method='lm', formula = y~x, method.args = list(family = gaussian(link = 'log'))) +
+  stat_smooth(method = "glm") +
+  #stat_cor(p.accuracy = 0.001, r.accuracy = 0.01) +
+  scale_color_manual(values=cols) +                                         # Set the color manually to the column values
+  scale_y_continuous(trans = "log10") +                          # Y axis on log scale
+  ylab("Proportion of shared spacers [%]") +
+  xlab("ANI - Average Nucleotide Identity [%]") +
+  annotation_logticks(sides = "l") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "left",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black", face = "italic"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_blank(), #element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_blank(), #element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  ) + 
+  guides(color = guide_legend(override.aes = list(alpha = 1, size = 2))) + # HERE PROBLEM
+  labs(colour='Species') +
+  ylim(c(0,100))
+
+
+plot_per_species <-
+  ggMarginal(plot_per_species, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+
+#, labels = function(x) str_replace(x, "_", " ")
+#scale_color_discrete(labels = function(x) str_replace(x, "_", " ")) +    # HERE PROBLEM   # Remove the '_' of the species names in plot, not in data
+
+# 
+ggsave(
+  plot = plot_per_species,
+  #file = "./IMG/report2/ANISpacerShared.pdf",
+  file = paste(google_drive_folder, "/ANI_sharedSpacers_plot_LM.jpg", sep=""),
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plot_per_species
+```
+
+```{r}
+lm(ANI_Shared_spacers_strain_pair_filtered$shared_spacer_numeric ~ ANI_Shared_spacers_strain_pair_filtered$ANI)
+
+
+summary(lm(ANI_Shared_spacers_strain_pair_filtered$shared_spacer_numeric ~ ANI_Shared_spacers_strain_pair_filtered$ANI))$r.squared
+```
+
+
+
 ##<p> Main plot 2 - 50-100 y axis
 
 ```{r fig.height=8, fig.width=12}
@@ -2613,6 +2713,219 @@ plot_ANI3 <- df3 %>% ggplot(aes(x=shared_spacer_numeric)) +
 plot_ANI3
 
 ```
+
+#----------------------------------------------
+# Per-array ANI / shared spacers
+
+To avoid the averaging of Array content/stability, do a pairwise comparison of all crispr arrays (how many shared spacers).
+Then, take arrays within species and join the pairwise strain ANI. 
+Same strain -> 100% ANI
+Different strain/same species -> get from ANI df
+Different species -> ignore 
+
+```{r}
+# library(furrr)
+
+# DATA
+ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
+
+#
+# Get the percentage of common spacers between two arrays
+#
+get_array_spacer_shared <- function(array1, array2){
+  # Get Spacer lists 
+  arr1_seq <- CRISPRscope_tbl_26 %>% filter(ArrayID == array1) %>% select(cluster_spacer_identity) %>% unlist()
+  arr2_seq <- CRISPRscope_tbl_26 %>% filter(ArrayID == array2) %>% select(cluster_spacer_identity) %>% unlist()
+  
+  
+  # common spacers
+  common <- intersect(arr1_seq , arr2_seq)
+  # Scores list to be returned
+  scores <- list("mean_notshared" = mean(length(arr1_seq)-length(common), length(arr2_seq)-length(common)),
+                "unique_sp" = (length(arr1_seq) + length(arr2_seq) - (2*length(common))),
+                "shared_perc" = ((2 * length(intersect(arr1_seq , arr2_seq)))/(length(arr1_seq) + length(arr2_seq))),
+                "shared_nb" = length(common))
+  
+  # Moved in scores[]
+  # Percentage of common sequences between the two arrays
+  # s_shared <- ((2 * length(intersect(arr1_seq , arr2_seq)))/(length(arr1_seq) + length(arr2_seq)))
+  
+  return(scores)
+}
+
+
+# List of all arrays
+arrays_list <- CRISPRscope_tbl_26 %>% select(ArrayID) %>% distinct() %>% unlist() # 1972 arrays
+
+# List of all possible pairs of arrays (for pairwise comparison)
+arrays_pairs <- combn(arrays_list, 2)
+
+# Create a dataframe with all necessary info for array1 and 2: Organism, Strain
+# Filter to keep only intra species pairs
+arrays_pairs_tbl <- tibble(Array1 = arrays_pairs[1,], Array2 = arrays_pairs[2,]) %>% 
+  # Join Species / Strain / Subtype info from main dataset for each array / pairs  
+  left_join(CRISPRscope_tbl_26 %>% select(Organism, Strain, Cas_subtype, ArrayID) %>% distinct(), by=c("Array1" = "ArrayID")) %>% 
+  dplyr::rename(Organism1 = Organism, Strain1 = Strain, Cas_subtype1 = Cas_subtype) %>% 
+  left_join(CRISPRscope_tbl_26 %>% select(Organism, Strain, Cas_subtype, ArrayID) %>% distinct(), by=c("Array2" = "ArrayID")) %>% 
+  dplyr::rename(Organism2 = Organism, Strain2 = Strain, Cas_subtype2 = Cas_subtype) %>% 
+  relocate(Array1, .after = Strain1) %>% relocate(Array2, .after = Strain2) %>% 
+  # FILTERING - INTRA SPECIES ONLY
+  filter(Organism1 == Organism2) %>% 
+  # Add ANI
+  left_join(ANI_merged_filtered %>% select(-species_query, -species_ref), by = c("Strain1" = "strain_query", "Strain2" = "strain_ref")) %>% 
+  # Compute shared spacers between arrays
+  mutate(scores = future_map2(Array1, Array2, get_array_spacer_shared)) %>% 
+  #== Scores ==
+  unnest(scores) %>% mutate(scores = unlist(scores)) %>%
+  group_by(Organism1, Strain1, Array1, Organism2, 
+           Strain2, Array2, ANI, bidirectional_fragment_mapping,
+           total_query_fragment) %>% 
+  summarise(Organism1, Strain1, Array1, Organism2, 
+           Strain2, Array2, ANI, bidirectional_fragment_mapping,
+           total_query_fragment,scores, cat = c("mean_notshared", "unique_sp", "perc_shared","numb_shared")) %>% 
+  spread(cat, scores) %>% 
+  ungroup() %>% 
+  filter(Strain1 != Strain2) %>% 
+  #mutate(perc_shared = perc_shared * 100) %>% 
+  mutate(nucleotide_diversity = (bidirectional_fragment_mapping * 1000)*(1/ANI)) %>% 
+  mutate(turnover_rate = nucleotide_diversity/unique_sp)
+
+
+# Forgot this... add in summarise for next run
+arrays_pairs_tbl <- arrays_pairs_tbl %>% 
+  left_join(CRISPRscope_tbl_26 %>% select(ArrayID, Cas_subtype) %>% distinct(), by = c("Array1" = "ArrayID")) %>% 
+  dplyr::rename(Cas_subtype1 = Cas_subtype) %>% 
+  relocate(Cas_subtype1, .after = Array1) %>% 
+  left_join(CRISPRscope_tbl_26 %>% select(ArrayID, Cas_subtype) %>% distinct(), by = c("Array2" = "ArrayID")) %>% 
+  dplyr::rename(Cas_subtype2 = Cas_subtype) %>% 
+  relocate(Cas_subtype2, .after = Array2)
+
+arrays_pairs_tbl %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
+colnames(arrays_pairs_tbl)
+
+
+```
+
+
+Recreate figure 2A (ANI vs Shared spacers)
+
+
+```{r, fig.height=8, fig.width=12}
+# arrays_pairs_tbl <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
+
+data_plot <- arrays_pairs_tbl %>% select(Organism1, ANI, perc_shared) %>% 
+  left_join(species_colors, by=c("Organism1" = "Species")) %>% 
+  filter(ANI > 95 ) %>% 
+  filter(perc_shared > 0) %>% 
+  mutate(col = color) %>% select(-color)%>% 
+  mutate(Organism1 = gsub("_", " ", Organism1))
+
+
+
+
+cols <- as.character(data_plot$col)
+names(cols) <- as.character(data_plot$Organism1)
+
+
+
+plot_per_species <- data_plot  %>% 
+  ggplot(aes(x=ANI, y=perc_shared, label = rev(Organism1))) + 
+  geom_point(aes(colour = Organism1), size = 0.9, alpha=0.7, show.legend=T) + 
+  #geom_smooth(method='lm', formula = y~x, method.args = list(family = gaussian(link = 'log'))) +
+  #stat_smooth(method = "lm") +
+  stat_cor(p.accuracy = 0.001, r.accuracy = 0.01) +
+  scale_color_manual(values=cols) +                                         # Set the color manually to the column values
+  scale_y_continuous(trans = "log10") +                          # Y axis on log scale
+  # xlim(c(97,100))+
+  ylab("Proportion of shared spacers [%]") +
+  xlab("ANI - Average Nucleotide Identity [%]") +
+  annotation_logticks(sides = "l") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      color = "black"
+    ),
+    axis.text.y = element_text(color = "black"),
+    axis.title.x = element_text(color = "black"),
+    axis.title.y = element_text(color = "black"),
+    axis.line.y.left = element_line(color = "black"),
+    axis.line.y.right = element_line(color = "black"),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(color = "black"),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "left",
+    legend.background = element_rect(fill = "white", colour = NA),
+    legend.box.background = element_rect(fill = "white", colour = NA),
+    legend.text = element_text(color = "black", face = "italic"),
+    legend.title = element_text(color = "black"),
+    plot.margin = unit(c(1, 1, 1, 1), "cm"),
+    panel.grid.major = element_blank(), #element_line(color = "black", size = 0.1),
+    panel.grid.minor = element_blank(), #element_line(color = "black", size = 0.1),
+    strip.background = element_rect(
+      color = "black",
+      fill = "White",
+      size = 0.5,
+      linetype = "solid"
+    ),
+    strip.text = element_text(color = "black")
+  ) + 
+  guides(color = guide_legend(override.aes = list(alpha = 1, size = 2))) + # HERE PROBLEM
+  labs(colour='Species') 
+
+
+plot_per_species <-
+  ggMarginal(plot_per_species, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+
+#, labels = function(x) str_replace(x, "_", " ")
+#scale_color_discrete(labels = function(x) str_replace(x, "_", " ")) +    # HERE PROBLEM   # Remove the '_' of the species names in plot, not in data
+
+
+ggsave(
+  plot = plot_per_species,
+  #file = "./IMG/report2/ANISpacerShared.pdf",
+  file = paste(google_drive_folder, "/ANI_perArray_sharedSpacers_plot.png", sep=""),
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+ggsave(
+  plot = plot_per_species,
+  #file = "./IMG/report2/ANISpacerShared.pdf",
+  file = paste(google_drive_folder, "/ANI_perArray_sharedSpacers_plot.pdf", sep=""),
+  bg = "white",
+  width = 25,
+  height = 15,
+  units = "cm",
+  dpi = 800
+)
+
+plot_per_species
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3269,6 +3582,31 @@ DR_clst_stats <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_repeat_
   select(-Organism) %>% 
   dplyr::count(cluster_repeat_identity) 
 
+#-----100%id
+# Number of repeats shared: 3
+DR_clst_stats %>% filter(n>1)
+# Number of repeats: 112
+DR_clst_stats %>% summarise(ndist = n_distinct(cluster_repeat_identity))
+3/112
+
+#----- 80% id
+DR_clst_stats80 <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_repeat) %>% 
+  distinct() %>% 
+  group_by(Organism) %>% 
+  summarise(Organism, cluster_repeat) %>% 
+  arrange(cluster_repeat) %>% 
+  distinct() %>% 
+  ungroup() %>% 
+  select(-Organism) %>% 
+  dplyr::count(cluster_repeat) 
+
+# Number of repeats shared: 14
+DR_clst_stats80 %>% filter(n>1)
+# Number of repeats: 40
+DR_clst_stats80 %>% summarise(ndist = n_distinct(cluster_repeat))
+14/40
+
+
 mean(DR_clst_stats$n)
 sd(DR_clst_stats$n)
 
@@ -3578,8 +3916,8 @@ plot_sp_cluster_order <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster
 plot_ <- plot_sp_cluster_order %>% 
   mutate(Organism = gsub("_", " ", Organism)) %>% 
   ggplot() +
-  #geom_tile(aes(x=cluster_spacer_identity, y=Organism), fill = "red", color = "red")+
-  geom_tile(aes(x=cluster_spacer, y=Organism), fill = "lightblue", color = "lightblue3")+
+  geom_tile(aes(x=cluster_spacer_identity, y=Organism), fill = "lightblue", color = "lightblue3")+
+  # geom_tile(aes(x=cluster_spacer, y=Organism), fill = "lightblue", color = "lightblue3")+
   theme_bw() +
   theme(axis.text.x = element_blank(),
         axis.text.y = element_text(hjust = 0, color = "black", face = "italic"),
@@ -3601,7 +3939,7 @@ plot_ <- plot_sp_cluster_order %>%
         legend.box.background = element_rect(fill = "white", colour = NA),
         legend.text = element_text(color = "black"),
         legend.title = element_text(color = "black")) +
-  xlab("80% similarity spacers clusters") +
+  xlab("100% similarity spacers clusters") +
   ylab("") 
 
 
@@ -4239,15 +4577,17 @@ Plor per-species orientation tendency
 orientation_stuff <- CRISPRscope_tbl_26 %>% group_by(ArrayID) %>% summarise(orientation = Orientation)%>% ungroup(ArrayID) %>% distinct() 
 orientation_stuff <- orientation_stuff %>% mutate(orientation = factor(orientation_stuff$orientation, levels = c("+", "-", "ND")))
 orientation_stuff %>% dplyr::count(orientation) %>% mutate(total = sum(n), proportion = n/total)
-# total array 1975: 
+# total array 1975:  -> wierd as we have 1972 arrays
 #807(+) 0.4086076 %
 #857(-) 0.4339241 %
 #311(ND) 0.1574684 %
 
+CRISPRscope_tbl_26 %>% select(ArrayID, Orientation) %>% distinct() %>% count(Orientation)
+CRISPRscope_tbl_26 %>% count()
 
 
 
-orientation_organisme_plot <- CRISPRscope_tbl_26 %>% group_by(Organism) %>% dplyr::count(Orientation) 
+orientation_organisme_plot <- CRISPRscope_tbl_26 %>% group_by(Organism) %>% select(Organism, ArrayID, Orientation) %>% distinct() %>% dplyr::count(Orientation) 
 orientation_organisme_plot$Organism = factor(orientation_organisme_plot$Organism, levels = species_levels_21)
   
 plt_ori <- orientation_organisme_plot %>% 

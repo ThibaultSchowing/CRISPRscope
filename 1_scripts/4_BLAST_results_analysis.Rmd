@@ -48,7 +48,7 @@ library(ggpubr)
 ```{r}
 
 repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
-google_drive_folder <- "C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
+google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
 data_folder <- "C:/Users/thsch/Desktop/0_data"
 ```
 

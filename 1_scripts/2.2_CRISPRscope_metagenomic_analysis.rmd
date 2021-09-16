@@ -25,12 +25,17 @@ library(ggthemr)
 
 #library(reticulate)
 
-
+# 
+# options(repos = BiocManager::repositories())
+# renv::install("BiocGenerics")
+# 
+# 
 # if (!requireNamespace("BiocManager", quietly = TRUE))
 #    install.packages("BiocManager")
+# library(BiocManager)
 # BiocManager::install("Biostrings")
-
-library(Biostrings)
+# 
+# library(Biostrings)
 
 # Converts dataframe to fasta file
 #install.packages("seqRFLP")
@@ -231,7 +236,7 @@ plt # %>% layout(title ="CRISPR content", annotations=list(yref='paper',xref="pa
 ```{r}
 
 # Before filtering
-CRISPRscope_meta_tbl %>% summarise(n_spacer = n_distinct(cluster_spacer), n_repeat = n_distinct(cluster_repeat), n_array = n_distinct(GID))
+#CRISPRscope_meta_tbl %>% summarise(n_spacer = n_distinct(cluster_spacer), n_repeat = n_distinct(cluster_repeat), n_array = n_distinct(GID))
 
 # After removing samples from rind
 CRISPRscope_meta_tbl_filtered %>% summarise(n_spacer = n_distinct(cluster_spacer), n_repeat = n_distinct(cluster_repeat), n_array = n_distinct(GID))
@@ -393,7 +398,7 @@ plt
 CRISPRscope_meta_tbl_filtered %>% select(spacer_per_milread) %>% distinct()
 
 
-df_spacer_mil_reads <- CRISPRscope_meta_tbl %>% 
+df_spacer_mil_reads <- CRISPRscope_meta_tbl_filtered %>% 
   select(ProjectID, SRA_ID, spacer_per_milread) %>% 
   distinct() %>% 
   mutate(ProjectID = as.factor(ProjectID), SRA_ID = fct_reorder(SRA_ID, spacer_per_milread)) %>% 
@@ -781,6 +786,7 @@ CRISPR_spacer_coverage_start <- read_delim(paste(data_folder, "/IMPORT/allSample
 
 reads4normalization <- read_delim(paste(data_folder, "/IMPORT/reads4normalization.txt", sep=""),  "\t", escape_double = FALSE, col_names = c("bioproject","sample","readNumber"), trim_ws = TRUE)
 
+CRISPR_spacer_coverage_wzeros <- CRISPR_spacer_coverage_start
 CRISPR_spacer_coverage_cleaned <- CRISPR_spacer_coverage_start %>% filter(spacer_cov!=0 & protospacer_cov!=0)
 dim(CRISPR_spacer_coverage_cleaned)
 #dim(CRISPR_spacer_coverage)
@@ -794,10 +800,15 @@ CRISPR_spacer_coverage <- merge(CRISPR_spacer_coverage_cleaned,reads4normalizati
 CRISPR_spacer_coverage$spacer_CPM <- 1000000*(CRISPR_spacer_coverage$spacer_cov/CRISPR_spacer_coverage$readNumber)
 CRISPR_spacer_coverage$protospacer_CPM <- 1000000*(CRISPR_spacer_coverage$protospacer_cov/CRISPR_spacer_coverage$readNumber)
 
+# Same while keeping zeroes
+CRISPR_spacer_coveragez <- merge(CRISPR_spacer_coverage_wzeros,reads4normalization,by="sample",all.x = TRUE)
+CRISPR_spacer_coveragez$spacer_CPM <- 1000000*(CRISPR_spacer_coveragez$spacer_cov/CRISPR_spacer_coveragez$readNumber)
+CRISPR_spacer_coveragez$protospacer_CPM <- 1000000*(CRISPR_spacer_coveragez$protospacer_cov/CRISPR_spacer_coveragez$readNumber)
+
 summary(CRISPR_spacer_coverage)
 
 CRISPR_spacer_coverage %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT/DR_SP_DR_results.csv", sep=""))
-
+CRISPR_spacer_coveragez %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT/DR_SP_DR_results_zeroes.csv", sep=""))
 
 ```
 
@@ -832,6 +843,7 @@ plot <-
   labs(x = "spacer [cpm]", y = "protospacers  [cpm]") +
   #geom_point(aes(fill = Subtype),alpha = 0.4, size = 0.2) +
   geom_smooth(method = "lm", se = FALSE) +
+  # stat_smooth(method = "glm") +
   stat_poly_eq(formula = my.formula,
                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
                parse = TRUE, ) +
