@@ -35,6 +35,8 @@ Switzerland
 Statistical analysis of the pipelines outputs. The outputs consists of the CRISPR content for genomes and metagenomes. Data are not available (yet) for property reasons.
 Note that the main datasets will be modified during the analysis (e.g. adding sequences GC content / pairwise comparison data / etc) 
 
+| File | Description |
+| ------------- | ------------- |
 | 1_CRISPRscope_genomic_analysis_phase2.rmd | Genome results R analysis. The pre-processing is done upstream on the HPC side.  |
 | 2.1_CRISPRscope_metagenomic_data.rmd      | Metagenomic results pre-processing before statistical analysis (merging and sanitizing)  |
 | 2.2_CRISPRscope_metagenomic_analysis.rmd  | Metagenomic results R analysis. |
@@ -49,6 +51,9 @@ Old versions, backups or special scripts.
 
 ## HPC_Scripts
 
+
+| Directory | Description |
+| ------------- | ------------- |
 | 0_data_scripts             | Scripts used to retreive data from NCBI or prepare data for BLAST  |
 | 1_CRISPRCasFinder          | Main Genomic pipeline. All scripts are chained to produce the raw genomic output.  |
 | 2_CRASS                    | Main Metagenomic pipeline.   |
