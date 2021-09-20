@@ -2482,7 +2482,45 @@ all_meta_votu <- CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, clu
 
 
 #----------------------------------------------
+# WIP VOTU and Cas subtypes
 
+Get for each spacer cluster, which votu it targets.
+
+```{r}
+
+# Cluster - Cas_type dict
+spacer_cluster_subtype_dict <- bind_rows(CRISPRscope_tbl_26 %>% select(cluster_spacer_identity, Cas_subtype) %>% distinct(), 
+          CRISPRscope_meta_tbl_filtered %>% select(cluster_spacer_identity, Subtype) %>% distinct() %>% dplyr::rename(Cas_subtype = Subtype)) %>% 
+  distinct()
+
+# All spacers with votu
+sp_votu_casSubtype <- bind_rows(
+  CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>%
+    left_join(
+      joined_IMGVR %>% select(qseqid, vOTU, Taxonomic.classification) %>% distinct(),
+      by = c("cluster_spacer_identity" = "qseqid")
+    ) %>%
+    arrange(cluster_spacer_identity) %>%
+    drop_na() %>%
+    select(cluster_spacer_identity, vOTU, Taxonomic.classification),
+  
+  CRISPRscope_meta_tbl_filtered %>% select(ProjectID, SRA_ID, cluster_spacer_identity) %>%
+    renameSamples() %>%
+    left_join(
+      joined_IMGVR %>%  select(qseqid, vOTU, Taxonomic.classification) %>% distinct(),
+      by = c("cluster_spacer_identity" = "qseqid")
+    ) %>%
+    arrange(cluster_spacer_identity) %>%
+    distinct() %>%
+    drop_na() %>%
+    select(cluster_spacer_identity, vOTU, Taxonomic.classification)
+) %>% distinct() %>% 
+  left_join(spacer_cluster_subtype_dict, by=c("cluster_spacer_identity")) %>% 
+  relocate(Cas_subtype, .after = vOTU)
+
+sp_votu_casSubtype %>% write_csv(file="./sp_votu_casSubtype.csv")
+
+```
 
 
 

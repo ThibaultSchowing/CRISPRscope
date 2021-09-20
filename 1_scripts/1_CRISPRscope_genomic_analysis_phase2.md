@@ -1,84 +1,278 @@
----
-title: "1.2_CRISPRscope_genomic_analysis"
-author: "Thibault Schowing"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
-output:
-  github_document:
-    toc: true
-always_allow_html: true
----
+1.2\_CRISPRscope\_genomic\_analysis
+================
+Thibault Schowing
+20 septembre, 2021
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+-   [Import libraries](#import-libraries)
+-   [Folders](#folders)
+-   [Divers functions](#divers-functions)
+-   [Metaphlan: Prevalence filtering](#metaphlan-prevalence-filtering)
+    -   [Final 26 species list -
+        Vincent](#final-26-species-list---vincent)
+    -   [Species list colors and names](#species-list-colors-and-names)
+    -   [Final 185 species](#final-185-species)
+-   [Import data](#import-data)
+    -   [CRISPRscope tibble SEL185](#crisprscope-tibble-sel185)
+    -   [CRISPRscope tibble SELDIALACT](#crisprscope-tibble-seldialact)
+        -   [Clustering 80%](#clustering-80)
+        -   [Clustering - 100% - meta +
+            genomic](#clustering---100---meta--genomic)
+    -   [Host genome GC content](#host-genome-gc-content)
+-   [Phylogenetic order](#phylogenetic-order)
+    -   [CRISPR arrays](#crispr-arrays)
+-   [EXPORT subsets and fastas](#export-subsets-and-fastas)
+    -   [Export spacers](#export-spacers)
+    -   [Export spacers for BLAST](#export-spacers-for-blast)
+    -   [Export repeats](#export-repeats)
+    -   [Export fasta for overall
+        clustering](#export-fasta-for-overall-clustering)
+    -   [Export Cas type for defense mechanisms
+        ploting](#export-cas-type-for-defense-mechanisms-ploting)
+    -   [<stat> Assembly ratio](#-assembly-ratio)
+    -   [distances and clusters](#distances-and-clusters)
+    -   [Species per cas subtypes](#species-per-cas-subtypes)
+    -   [185 species cas subtypes](#185-species-cas-subtypes)
+    -   [Total number of spacers](#total-number-of-spacers)
+    -   [Spacers GC content](#spacers-gc-content)
+    -   [Repeats GC content](#repeats-gc-content)
+    -   [Spacer length](#spacer-length)
+    -   [Spacer length density](#spacer-length-density)
+    -   [Spacers count](#spacers-count)
+    -   [Host GC content](#host-gc-content)
+    -   [Merge plots](#merge-plots)
+    -   [<ANI numbers>](#section)
+-   [ANI custom turnover / array](#ani-custom-turnover--array)
+    -   [Results](#results)
+-   [Repeat and spacers cluster species
+    comparison](#repeat-and-spacers-cluster-species-comparison)
+-   [Repeat clusters](#repeat-clusters)
+    -   [Tileplot clusterx 100](#tileplot-clusterx-100)
+    -   [Tileplot clusterx 80](#tileplot-clusterx-80)
+    -   [cluster80 percentage identity.](#cluster80-percentage-identity)
+-   [<stat> spacers numbers](#-spacers-numbers)
+    -   [Contamination -&gt; Helveticus and Delbrueckii shared
+        spacers](#contamination---helveticus-and-delbrueckii-shared-spacers)
+    -   [Spacers heatmaps (80-100%)](#spacers-heatmaps-80-100)
+    -   [Shared spacers colored by
+        repeat.](#shared-spacers-colored-by-repeat)
+-   [——————————](#section-1)
+-   [Pairwise spacer comparison](#pairwise-spacer-comparison)
+    -   [Identical spacers](#identical-spacers)
+    -   [Results](#results-1)
+        -   [All merged data](#all-merged-data)
+        -   [bigger than 35](#bigger-than-35)
+        -   [30 or not](#30-or-not)
+    -   [Edit distance final plot](#edit-distance-final-plot)
+-   [————————-](#-)
+-   [SEED: Where are the mutations?](#seed-where-are-the-mutations)
+    -   [All pairs &lt; edit6](#all-pairs--edit6)
+    -   [By cas-types](#by-cas-types)
+    -   [Plots](#plots)
+-   [————————-](#--1)
+-   [Genome and CRISPR nucleotide
+    diversity](#genome-and-crispr-nucleotide-diversity)
+    -   [Comparison with core genome diversity
+        (?)](#comparison-with-core-genome-diversity-)
+-   [————————-](#--2)
+-   [Edit distance Randomness
+    Verification](#edit-distance-randomness-verification)
+    -   [Plot](#plot)
+    -   [Compare overall with random](#compare-overall-with-random)
+-   [-](#--3)
+-   [-](#--4)
+-   [-](#--5)
 
-Second phase. 
-The metagenomes were analysed with Metaphlan3 and 242 species were found. The available assemblies of these 242 species on NCBI were downloaded and CRISPRCasFinder (CRISPRscope) was executed on these assemblies. 
-
-
+Second phase. The metagenomes were analysed with Metaphlan3 and 242
+species were found. The available assemblies of these 242 species on
+NCBI were downloaded and CRISPRCasFinder (CRISPRscope) was executed on
+these assemblies.
 
 # Import libraries
 
-```{r, echo=FALSE}
-library(tidyverse)
-library(readr)
-library(plotly)
-# for iteration and fonctionnal programming
-library(purrr)
-# for nesting dataframe
-library(tidyr)
-# https://community.rstudio.com/t/is-there-a-tidy-way-to-iterate-a-data-frame-tibble-and-produce-side-effects-based-on-the-value-of-each-row/52382/4
-library(slider)
+    ## -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
 
+    ## v ggplot2 3.3.5     v purrr   0.3.4
+    ## v tibble  3.1.2     v dplyr   1.0.7
+    ## v tidyr   1.1.3     v stringr 1.4.0
+    ## v readr   2.0.0     v forcats 0.5.1
 
+    ## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
+    ## x dplyr::filter() masks stats::filter()
+    ## x dplyr::lag()    masks stats::lag()
 
-# For melt() in custom heatmap
-#install.packages("reshape")
-library(reshape)
+    ## 
+    ## Attachement du package : 'plotly'
 
-# if (!requireNamespace("BiocManager", quietly = TRUE))
-#    install.packages("BiocManager")
-# BiocManager::install("Biostrings")
+    ## L'objet suivant est masqué depuis 'package:ggplot2':
+    ## 
+    ##     last_plot
 
-library(Biostrings)
+    ## L'objet suivant est masqué depuis 'package:stats':
+    ## 
+    ##     filter
 
-# if (!requireNamespace("BiocManager", quietly=TRUE))
-# install.packages("BiocManager")
-# BiocManager::install("msa")
+    ## L'objet suivant est masqué depuis 'package:graphics':
+    ## 
+    ##     layout
 
-library(msa)
+    ## 
+    ## Attachement du package : 'reshape'
 
+    ## L'objet suivant est masqué depuis 'package:plotly':
+    ## 
+    ##     rename
 
-# Converts dataframe to fasta file
-# install.packages("seqRFLP")
-library("seqRFLP")
+    ## L'objet suivant est masqué depuis 'package:dplyr':
+    ## 
+    ##     rename
 
+    ## Les objets suivants sont masqués depuis 'package:tidyr':
+    ## 
+    ##     expand, smiths
 
-# for pseudo_log_trans(sigma = 1, base = exp(1))
-library(scales)
+    ## Le chargement a nécessité le package : BiocGenerics
 
-library(ggExtra) # ggMarginal
+    ## Le chargement a nécessité le package : parallel
 
+    ## 
+    ## Attachement du package : 'BiocGenerics'
 
-library(gridExtra)
-library(cowplot)
-library(egg)
+    ## Les objets suivants sont masqués depuis 'package:parallel':
+    ## 
+    ##     clusterApply, clusterApplyLB, clusterCall, clusterEvalQ,
+    ##     clusterExport, clusterMap, parApply, parCapply, parLapply,
+    ##     parLapplyLB, parRapply, parSapply, parSapplyLB
 
-# CLUSTERING test
-# BiocManager::install("DECIPHER")
-library(DECIPHER)
-library(stringi) # Random string generation
+    ## Les objets suivants sont masqués depuis 'package:dplyr':
+    ## 
+    ##     combine, intersect, setdiff, union
 
-library(ggridges)
-library(gg.gap)
+    ## Les objets suivants sont masqués depuis 'package:stats':
+    ## 
+    ##     IQR, mad, sd, var, xtabs
 
-library(furrr)
-```
+    ## Les objets suivants sont masqués depuis 'package:base':
+    ## 
+    ##     anyDuplicated, append, as.data.frame, basename, cbind, colnames,
+    ##     dirname, do.call, duplicated, eval, evalq, Filter, Find, get, grep,
+    ##     grepl, intersect, is.unsorted, lapply, Map, mapply, match, mget,
+    ##     order, paste, pmax, pmax.int, pmin, pmin.int, Position, rank,
+    ##     rbind, Reduce, rownames, sapply, setdiff, sort, table, tapply,
+    ##     union, unique, unsplit, which.max, which.min
+
+    ## Le chargement a nécessité le package : S4Vectors
+
+    ## Le chargement a nécessité le package : stats4
+
+    ## 
+    ## Attachement du package : 'S4Vectors'
+
+    ## Les objets suivants sont masqués depuis 'package:reshape':
+    ## 
+    ##     expand, rename
+
+    ## L'objet suivant est masqué depuis 'package:plotly':
+    ## 
+    ##     rename
+
+    ## Les objets suivants sont masqués depuis 'package:dplyr':
+    ## 
+    ##     first, rename
+
+    ## L'objet suivant est masqué depuis 'package:tidyr':
+    ## 
+    ##     expand
+
+    ## Les objets suivants sont masqués depuis 'package:base':
+    ## 
+    ##     expand.grid, I, unname
+
+    ## Le chargement a nécessité le package : IRanges
+
+    ## 
+    ## Attachement du package : 'IRanges'
+
+    ## L'objet suivant est masqué depuis 'package:plotly':
+    ## 
+    ##     slice
+
+    ## Les objets suivants sont masqués depuis 'package:dplyr':
+    ## 
+    ##     collapse, desc, slice
+
+    ## L'objet suivant est masqué depuis 'package:purrr':
+    ## 
+    ##     reduce
+
+    ## L'objet suivant est masqué depuis 'package:grDevices':
+    ## 
+    ##     windows
+
+    ## Le chargement a nécessité le package : XVector
+
+    ## 
+    ## Attachement du package : 'XVector'
+
+    ## L'objet suivant est masqué depuis 'package:purrr':
+    ## 
+    ##     compact
+
+    ## Le chargement a nécessité le package : GenomeInfoDb
+
+    ## 
+    ## Attachement du package : 'Biostrings'
+
+    ## L'objet suivant est masqué depuis 'package:base':
+    ## 
+    ##     strsplit
+
+    ## 
+    ## Attachement du package : 'scales'
+
+    ## L'objet suivant est masqué depuis 'package:purrr':
+    ## 
+    ##     discard
+
+    ## L'objet suivant est masqué depuis 'package:readr':
+    ## 
+    ##     col_factor
+
+    ## 
+    ## Attachement du package : 'gridExtra'
+
+    ## L'objet suivant est masqué depuis 'package:BiocGenerics':
+    ## 
+    ##     combine
+
+    ## L'objet suivant est masqué depuis 'package:dplyr':
+    ## 
+    ##     combine
+
+    ## 
+    ## Attachement du package : 'cowplot'
+
+    ## L'objet suivant est masqué depuis 'package:reshape':
+    ## 
+    ##     stamp
+
+    ## Le chargement a nécessité le package : RSQLite
+
+    ## Le chargement a nécessité le package : future
+
+    ## 
+    ## Attachement du package : 'future'
+
+    ## L'objet suivant est masqué depuis 'package:IRanges':
+    ## 
+    ##     values
+
+    ## L'objet suivant est masqué depuis 'package:S4Vectors':
+    ## 
+    ##     values
 
 # Folders
 
-```{r}
-
+``` r
 repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
 google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
 #"C:/Users/thsch/Google Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
@@ -88,28 +282,28 @@ google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISP
 data_folder <- "C:/Users/thsch/Desktop/0_data"
 
 results_folder <- "C:/Users/thsch/Desktop/0_data/CRISPRscope_results"      # Not gitted. Contains .rds results from the pipeline and diverse small intermediary results.
-
 ```
-
 
 # Divers functions
 
-```{r}
+``` r
 #
 # Converts dna string set to dataframe
 #
 dss2df <- function(dss) data.frame(length=width(dss), seq=as.character(dss), names=names(dss))
 ```
 
-
-#----------------------------------------------
+\#———————————————-
 
 # Metaphlan: Prevalence filtering
-Using Metaphlan output, select only the species with a high enough abudance. 
 
-ATTENTION: Only the document sent by Vincent is correct, as 16S samples were also taken in account. 
+Using Metaphlan output, select only the species with a high enough
+abudance.
 
-```{bash, eval=FALSE}
+ATTENTION: Only the document sent by Vincent is correct, as 16S samples
+were also taken in account.
+
+``` bash
 #!/bin/bash
 
 #SBATCH -o slurm_output/metaphlan-%j-output.txt
@@ -180,8 +374,6 @@ do
 
                         grep "s__"  ${BaseLocation_output}/metaphlan/${bioprojectsss}_${biosamplesss}/metaphlan_profile/profiled_metagenome_${names}_trimmed.txt |grep "t__" -v|awk -F "[\t|]" -v culturess="$bioprojectsss" -v strainzzzss="$biosamplesss" '{OFS="\t"}{print culturess,strainzzzss,$7,$15}' >>  ${BaseLocation_output}/metaphlan/${DATE}_allStrains_metaphlan.txt
 
-
-
                 else
                         echo -e "there are only one read file in the directory, therefore we run a single end bwa alignement"
 
@@ -198,17 +390,15 @@ do
 
                         grep "s__"  ${BaseLocation_output}/metaphlan/${bioprojectsss}_${biosamplesss}/metaphlan_profile/profiled_metagenome_${names}_trimmed.txt |grep "t__" -v|awk -F "[\t|]" -v culturess="$bioprojectsss" -v strainzzzss="$biosamplesss" '{OFS="\t"}{print culturess,strainzzzss,$7,$15}' >>  ${BaseLocation_output}/metaphlan/${DATE}_allStrains_metaphlan.txt
 
-
                 fi
 
         done #biosamplessss
 done #bioprojectsss
-
 ```
 
 Read Metaphlan OUTPUT
 
-```{r, eval=F}
+``` r
 allStrains_metaphlan <- read_delim(paste(data_folder, "/Metaphlan_results/allStrains_metaphlan.txt", sep=""), 
                                    "\t", 
                                    escape_double = FALSE, 
@@ -237,24 +427,23 @@ unique(allStrains_metaphlan$ProjectID)
 length(unique_species)
 ```
 
-
-
-
-
 ## Final 26 species list - Vincent
-Generated by Vincent Somerville -> final species selection from Metaphlan output and 16S samples from Foodbionet
 
-Note: For Taxon ID we use our metaphlan output but also 16S analysis of other cheese from Foodbionet.
-The FINAL_LIST from Vincent contains the most prevalent species from Metaphlan AND Foodbionet. 
+Generated by Vincent Somerville -&gt; final species selection from
+Metaphlan output and 16S samples from Foodbionet
 
-The goal is now to download the genomes of the high-prevalence foodbionet species, currently missing in our assemblies collection.
+Note: For Taxon ID we use our metaphlan output but also 16S analysis of
+other cheese from Foodbionet. The FINAL\_LIST from Vincent contains the
+most prevalent species from Metaphlan AND Foodbionet.
 
+The goal is now to download the genomes of the high-prevalence
+foodbionet species, currently missing in our assemblies collection.
 
 ## Species list colors and names
 
-Give to each species a specifically defined color. 
+Give to each species a specifically defined color.
 
-```{r}
+``` r
 # Contains the associated color set for the species
 species_colors <- read_delim(paste(data_folder, "/IMPORT/species_colors.txt", sep = ""),
                              "\t", escape_double = FALSE, trim_ws = TRUE) %>% 
@@ -262,13 +451,41 @@ species_colors <- read_delim(paste(data_folder, "/IMPORT/species_colors.txt", se
   select(-species) %>% 
   mutate(Species = gsub(" ", "_", Species)) %>% 
   mutate(color = toupper(color))
+```
 
+    ## Rows: 28 Columns: 2
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: "\t"
+    ## chr (2): species, color
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 X20210428_metaphlan_Foodbionet_final_species <- 
   read_csv(
     paste(
       data_folder, "/IMPORT/20210428_metaphlan_final_species.txt", sep = "")) %>% 
   mutate(species_new = gsub(" ", "_", species_new)) %>% arrange(species_new)
+```
 
+    ## New names:
+    ## * `` -> ...1
+
+    ## Rows: 26 Columns: 5
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (1): species_new
+    ## dbl (4): ...1, counts, prevelance, median
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # Update the Species names. 
 update_names <- function(tbl){
   return(
@@ -302,22 +519,57 @@ species_colors <- update_names(species_colors)
   
 # Result
 species_colors
-final_species_list_26$Species
-
-
 ```
 
-242 species were analysed with CRISPRCasFinder when only 196 are outputed by Metaphlan (unidentified process error).
+    ## # A tibble: 28 x 2
+    ##    color     Species                           
+    ##    <chr>     <chr>                             
+    ##  1 #17C3B2FF Bifidobacterium_animalis          
+    ##  2 #16C3B396 Brevibacterium_aurantiacum        
+    ##  3 #14C2B14B Brevibacterium_linens             
+    ##  4 #A7C5DA4B Companilactobacillus_versmoldensis
+    ##  5 GREY      Corynebacterium_casei             
+    ##  6 GREY      Cutibacterium_acnes               
+    ##  7 #A7BED3FF Lacticaseibacillus_casei          
+    ##  8 #A7C5DA96 Lacticaseibacillus_rhamnosus      
+    ##  9 #A3758A32 Lactiplantibacillus_plantarum     
+    ## 10 #FDC2B496 Lactobacillus_acidophilus         
+    ## # ... with 18 more rows
 
-- modify the needed species names 
-- Confirm that the 196 species have been processed and remove the useless ones 
-- Check the output of the Foodbionet thingy and verify which species need to be added
+``` r
+final_species_list_26$Species
+```
+
+    ##  [1] "Bifidobacterium_animalis"           "Brevibacterium_aurantiacum"        
+    ##  [3] "Brevibacterium_linens"              "Companilactobacillus_versmoldensis"
+    ##  [5] "Corynebacterium_casei"              "Cutibacterium_acnes"               
+    ##  [7] "Lacticaseibacillus_casei"           "Lacticaseibacillus_rhamnosus"      
+    ##  [9] "Lactiplantibacillus_plantarum"      "Lactobacillus_acidophilus"         
+    ## [11] "Lactobacillus_delbrueckii"          "Lactobacillus_helveticus"          
+    ## [13] "Lactococcus_lactis"                 "Latilactobacillus_curvatus"        
+    ## [15] "Leuconostoc_lactis"                 "Leuconostoc_mesenteroides"         
+    ## [17] "Leuconostoc_pseudomesenteroides"    "Limosilactobacillus_fermentum"     
+    ## [19] "Loigolactobacillus_coryniformis"    "Mammaliicoccus_sciuri"             
+    ## [21] "Pediococcus_parvulus"               "Pediococcus_pentosaceus"           
+    ## [23] "Propionibacterium_freudenreichii"   "Staphylococcus_equorum"            
+    ## [25] "Streptococcus_lutetiensis"          "Streptococcus_thermophilus"
+
+242 species were analysed with CRISPRCasFinder when only 196 are
+outputed by Metaphlan (unidentified process error).
+
+-   modify the needed species names
+-   Confirm that the 196 species have been processed and remove the
+    useless ones
+-   Check the output of the Foodbionet thingy and verify which species
+    need to be added
 
 ## Final 185 species
-Create a precise list of the 196 Metaphlan species and add the 16S prevalent ones with renaming of the particular ones as bellow. 
-There are 185 species with available genomes at the end.
 
-```{r eval=FALSE}
+Create a precise list of the 196 Metaphlan species and add the 16S
+prevalent ones with renaming of the particular ones as bellow. There are
+185 species with available genomes at the end.
+
+``` r
 # final_species_list_199 <- allStrains_metaphlan %>% select(Species) %>% distinct() %>% 
 #   mutate(Species = replace(Species, Species == "Streptococcus_luteciae", "Streptococcus_lutetiensis")) %>% 
 #   mutate(Species = replace(Species, Species == "Propionibacterium_acnes", "Cutibacterium_acnes")) %>% 
@@ -403,52 +655,41 @@ There are 185 species with available genomes at the end.
 
 # Once all genomes from the right merged species are ready, copy the 26 selected into the right directory
 # 
-
-
 ```
 
-
-
-
-
-
 # Import data
+
 ## CRISPRscope tibble SEL185
 
-Import the main dataset(s). Directly created after executing CRISPRCasFinder and associated parsers on the IBU cluster. (p539)
-Computed with the selection of the available assemblies of 199 species (minus two empty Streptococci) 
+Import the main dataset(s). Directly created after executing
+CRISPRCasFinder and associated parsers on the IBU cluster. (p539)
+Computed with the selection of the available assemblies of 199 species
+(minus two empty Streptococci)
 
-
-
-```{r}
+``` r
 # Main set: contains 242 species 
 CRISPRscope_tbl_185 <- readRDS(file = paste(results_folder, "/SEL185/SEL185_NCBI_CRISPRscope_tibble.rds", sep=""))
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% mutate(source = "NCBI")
-
-
-
 ```
 
 ## CRISPRscope tibble SELDIALACT
-Import of the data from in-house Dialact database (among the 26 most prevalent species.)
 
+Import of the data from in-house Dialact database (among the 26 most
+prevalent species.)
 
-```{r}
+``` r
 CRISPRscope_tbl_Dialact <- readRDS(file = paste(results_folder, "/SELDIALACT/SELDIALACT_DIALACT_CRISPRscope_tibble.rds", sep=""))
 CRISPRscope_tbl_Dialact <- CRISPRscope_tbl_Dialact %>% mutate(source = "DIALACT")
 
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% bind_rows(CRISPRscope_tbl_Dialact)
-
-
 ```
 
-
-#==============================================
-# Additional quality filtering
+\#============================================== \# Additional quality
+filtering
 
 Remove spurious NNNN sequences in the spacer set and repeat set
-```{r}
 
+``` r
 CRISPRscope_tbl_185_raw <- CRISPRscope_tbl_185
 
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% 
@@ -484,28 +725,53 @@ CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>%
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% filter(nchar(SpacerSeq) < 50)
 ```
 
+\#============================================== \# Clustering \#\#
+Clustering - 80% - genomic
 
-#==============================================
-# Clustering
-## Clustering - 80% - genomic
+As data have been computed separately between NCBI and Dialact
+databases, the clustering has to be done for all spacers / repeats at
+the same time. These are the clusters at 80% identity only for the
+genomic part
 
-As data have been computed separately between NCBI and Dialact databases, the clustering has to be done for all spacers / repeats at the same time. 
-These are the clusters at 80% identity only for the genomic part 
+Import processed clustering and merge to main tibble.
 
+### Clustering 80%
 
-Import processed clustering and merge to main tibble. 
-
-### Clustering 80% 
-```{r}
-
+``` r
 Clusters_CRISPRscope_spacers80 <- read_csv(paste(
       data_folder, "/IMPORT/clustering/Clusters0.8_CRISPRscope_genomic_185_spacers.csv", sep = "")) %>% 
   distinct(seq, cluster, identity)
+```
 
+    ## Rows: 69467 Columns: 4
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (2): seq, seqid
+    ## dbl (2): cluster, identity
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 Clusters_CRISPRscope_repeats80 <- read_csv(paste(
       data_folder, "/IMPORT/clustering/Clusters0.8_CRISPRscope_genomic_185_repeats.csv", sep = "")) %>% 
   distinct(seq, cluster, identity)
+```
 
+    ## Rows: 892 Columns: 4
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (2): seq, seqid
+    ## dbl (2): cluster, identity
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% select(-cluster_spacer, -identity_spacer_cluster, -cluster_repeat, -identity_repeat_cluster)
 
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% 
@@ -524,30 +790,50 @@ CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>%
   select(-cluster, -identity) %>% 
   relocate(cluster_repeat, .after = "DR_seq") %>% 
   relocate(identity_repeat_cluster80, .after = "cluster_repeat")
-
-
-
 ```
 
-
-
-
 ### Clustering - 100% - meta + genomic
-The fasta files are exported within 3.2_CRISPRscope_comparison. Clustering is done with 100% identity to have identical but reverse complement clusters.
-Here we only take the cluster number, not the identity %
 
+The fasta files are exported within 3.2\_CRISPRscope\_comparison.
+Clustering is done with 100% identity to have identical but reverse
+complement clusters. Here we only take the cluster number, not the
+identity %
 
-```{r}
-
+``` r
 Clusters_CRISPRscope_spacers_identity <- read_csv(paste(
       data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_SPACERS.csv", sep = "")) %>% 
   distinct(seq, cluster, identity) %>% select(-identity)
+```
 
+    ## Rows: 79007 Columns: 4
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (2): seq, seqid
+    ## dbl (2): cluster, identity
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 Clusters_CRISPRscope_repeats_identity <- read_csv(paste(
       data_folder, "/IMPORT/clustering/Clusters1_CRISPRscope_ALL_REPEATS.csv", sep = "")) %>% 
   distinct(seq, cluster, identity) %>% select(-identity)
+```
 
+    ## Rows: 1362 Columns: 4
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (2): seq, seqid
+    ## dbl (2): cluster, identity
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% 
   left_join(Clusters_CRISPRscope_spacers_identity, by = c("SpacerSeq" = "seq")) %>% 
   mutate(cluster_spacer_identity = cluster) %>% 
@@ -561,26 +847,27 @@ CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>%
   select(-cluster) %>% 
   relocate(cluster_repeat, .after = "DR_seq") %>% 
   relocate(cluster_repeat_identity, .after = "cluster_repeat")
-
-
 ```
-#==============================================
-# Subtype to class 
 
-```{r}
+\#============================================== \# Subtype to class
 
+``` r
 # Species + strain
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185 %>% separate(Cas_subtype, c("Type", "Subtype"), remove = FALSE) %>% 
   mutate(Cas_class = if_else(Type %in% c("I","III","IV"), "Class 1", "Class 2", "NA")) %>% 
   relocate(Cas_class, .before = Cas_subtype) %>% 
   select(-Type, -Subtype)
 ```
-#==============================================
-# Genome count merge
-Integrate here the orginal numger of genomes, the database of origin, etc. 
 
+    ## Warning: Expected 2 pieces. Additional pieces discarded in 42 rows [51496,
+    ## 51497, 51498, 51499, 51500, 51501, 51502, 53340, 53341, 53342, 53343, 53344,
+    ## 53345, 53346, 53407, 53408, 53409, 53410, 53411, 53412, ...].
 
-```{r}
+\#============================================== \# Genome count merge
+Integrate here the orginal numger of genomes, the database of origin,
+etc.
+
+``` r
 # Species count. Result of the original metaphlan. (?)
 
   #allStrains_metaphlan %>% summarise(nb_species = n_distinct(Species)) # 196
@@ -593,10 +880,44 @@ Integrate here the orginal numger of genomes, the database of origin, etc.
 
   genome_count_SELDIALACT <- read_delim(paste(data_folder, "/CRISPRscope_results/genome_count_SELDIALACT.txt", sep=""), 
     ";", escape_double = FALSE, trim_ws = TRUE) %>% mutate(count = `12`, Species = ...2) %>% select(-`12`, -...2)
+```
+
+    ## New names:
+    ## * `` -> ...2
+
+    ## Rows: 12 Columns: 2
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ";"
+    ## chr (1): ...2
+    ## dbl (1): 12
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
   genome_count_SELDIALACT %>% write.csv(paste(data_folder, "/CRISPRscope_results/export_genome_count_SELDIALACT.csv", sep=""))
 
   genome_count_SEL185 <- read_delim(paste(data_folder, "/CRISPRscope_results/genome_count_SEL185.txt", sep=""), 
     ";", escape_double = FALSE, trim_ws = TRUE) %>% mutate(count = `185`, Species = ...2) %>% select(-`185`, -...2)
+```
+
+    ## New names:
+    ## * `` -> ...2
+
+    ## Rows: 185 Columns: 2
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ";"
+    ## chr (1): ...2
+    ## dbl (1): 185
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
   genome_count_SEL185 %>% write.csv(paste(data_folder, "/CRISPRscope_results/export_genome_count_SEL185.csv", sep=""))
 
   genome_count_TOTAL <- bind_rows(genome_count_SEL185, genome_count_SELDIALACT)
@@ -606,7 +927,14 @@ Integrate here the orginal numger of genomes, the database of origin, etc.
   genome_count_TOTAL <- tibble(aggregate(genome_count_TOTAL$count, by=list(genome_count_TOTAL$Species), sum)) %>% 
     mutate(Species = Group.1, count = x) %>% select(-Group.1, -x)
   genome_count_TOTAL %>% summarise(total = sum(count))
-  
+```
+
+    ## # A tibble: 1 x 1
+    ##   total
+    ##   <dbl>
+    ## 1 14869
+
+``` r
   # Final genome count for the 26 most prevalent species
   genome_count_26 <- genome_count_TOTAL %>% filter(Species %in% final_species_list_26$Species) %>% summarise(total = sum(count)) # 2778
   
@@ -619,31 +947,78 @@ Integrate here the orginal numger of genomes, the database of origin, etc.
   
   
   genome_count_SELDIALACT
-  genome_count_SEL185
-  genome_count_TOTAL
-
-#TODO include genome count (total original genomes)
-
-  
-  
-
-  
 ```
 
+    ## # A tibble: 12 x 2
+    ##    count Species                         
+    ##    <dbl> <chr>                           
+    ##  1    83 Streptococcus_thermophilus      
+    ##  2    69 Lactobacillus_helveticus        
+    ##  3    84 Lactococcus_lactis              
+    ##  4     2 Brevibacterium_aurantiacum      
+    ##  5     1 Latilactobacillus_curvatus      
+    ##  6   168 Lactobacillus_delbrueckii       
+    ##  7    20 Leuconostoc_mesenteroides       
+    ##  8    70 Propionibacterium_freudenreichii
+    ##  9    15 Pediococcus_pentosaceus         
+    ## 10     2 Staphylococcus_equorum          
+    ## 11     2 Corynebacterium_casei           
+    ## 12    20 Lacticaseibacillus_rhamnosus
+
+``` r
+  genome_count_SEL185
+```
+
+    ## # A tibble: 185 x 2
+    ##    count Species                      
+    ##    <dbl> <chr>                        
+    ##  1   500 Streptococcus_agalactiae     
+    ##  2     3 Kurthia_sp_11kri321          
+    ##  3     2 Brachybacterium_saurashtrense
+    ##  4    34 Carnobacterium_maltaromaticum
+    ##  5     7 Lactobacillus_brevis         
+    ##  6    37 Pseudomonas_lundensis        
+    ##  7    22 Kocuria_rhizophila           
+    ##  8    17 Leuconostoc_lactis           
+    ##  9   122 Streptococcus_thermophilus   
+    ## 10   104 Halomonas_sp_JB37            
+    ## # ... with 175 more rows
+
+``` r
+  genome_count_TOTAL
+```
+
+    ## # A tibble: 185 x 2
+    ##    Species                                count
+    ##    <chr>                                  <dbl>
+    ##  1 Acidipropionibacterium_acidipropionici     8
+    ##  2 Acinetobacter_baumannii                  500
+    ##  3 Acinetobacter_johnsonii                   38
+    ##  4 Acinetobacter_nosocomialis               152
+    ##  5 Aerococcus_urinaeequi                      8
+    ##  6 Aerococcus_viridans                        7
+    ##  7 Agrococcus_casei                           1
+    ##  8 Alkalibacterium_gilvum                     1
+    ##  9 Bacillus_aerius                            2
+    ## 10 Bacillus_coagulans                        11
+    ## # ... with 175 more rows
+
+``` r
+#TODO include genome count (total original genomes)
+```
 
 Genome count merge
-```{r}
+
+``` r
 tmpjoin <- genome_count_TOTAL %>% mutate(original_assembly_count = count) %>% select(-count)
 
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185  %>% 
   left_join(tmpjoin, by = c("Organism" = "Species"))
 ```
 
+\#============================================== \# Spacers GC content
 
-#==============================================
-# Spacers GC content
-
-```{r}
+``` r
 seq_to_gc_content <- function(sequence){
   num_g <- str_count(sequence, "G") + str_count(sequence, "g")
   num_c <- str_count(sequence, "C") + str_count(sequence, "c")
@@ -656,54 +1031,24 @@ CRISPRscope_tbl_185 <- CRISPRscope_tbl_185  %>%
 
 CRISPRscope_tbl_185 <- CRISPRscope_tbl_185  %>% 
   mutate(repeat_gc_content = map_dbl(DR_seq, seq_to_gc_content))
-
 ```
 
+\#——————————- \# CRISPRscope tibble SEL26
 
+Here we create a second dataset with only the 26 most prevalent species.
+In the end there are only 21 species because 5 do not contain CRISPR
 
-
-#-------------------------------
-# CRISPRscope tibble SEL26
-
-Here we create a second dataset with only the 26 most prevalent species. In the end there are only 21 species because 5 do not contain CRISPR
-
-```{r}
+``` r
 #final_species_list_26$Species
 
 CRISPRscope_tbl_26 <- CRISPRscope_tbl_185%>% filter(Organism %in% final_species_list_26$Species)
 ```
 
-
 ## Host genome GC content
-```{r  echo=F, results='hide', include=FALSE}
 
+\#———————————————- \# Meso/thermophilic or general (26 only)
 
-gc_content <- tibble()
-
-for (f in list.files(path = paste(data_folder, "/GCcontent/OUTPUT", sep=""))){
-
-  strain <- str_replace(f,"_gc_content.tsv$", "")
-  
-  
-  gc_mean <- read_delim(file = paste(data_folder, "/GCcontent/OUTPUT/",f, sep=""), col_names = c("name", "gc"), delim = "\t") %>% 
-    summarise(mean=mean(gc)) %>% 
-    mutate(Strain = strain)
-  gc_content <- bind_rows(gc_content, gc_mean)
-  
-  
-}
-
-gc <- gc_content %>% dplyr::rename(host_gc_content = mean)
-
-# Join to dataset
-
-CRISPRscope_tbl_26 <- CRISPRscope_tbl_26 %>% left_join(gc, by = c("Strain" = "Strain"))
-```
-
-
-#----------------------------------------------
-# Meso/thermophilic or general (26 only)
-```{r}
+``` r
 CRISPRscope_tbl_26 <- CRISPRscope_tbl_26 %>% 
   mutate(species_type = 
            ifelse(Organism %in% c("Lacticaseibacillus_casei","Lactobacillus_delbrueckii","Streptococcus_thermophilus",
@@ -715,30 +1060,23 @@ CRISPRscope_tbl_26 <- CRISPRscope_tbl_26 %>%
                          "generalist"))) 
 ```
 
+\#———————————————- \# EXPORT CRISPRscope\_tbl - RDS
 
-
-#----------------------------------------------
-# EXPORT CRISPRscope_tbl - RDS
-
-```{r}
+``` r
 # Export the complete dataset for comparison with metagenomes.
 
 saveRDS(CRISPRscope_tbl_185, file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
 saveRDS(CRISPRscope_tbl_26, file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
 ```
 
-
-
-
-#----------------------------------------------
-#-
-#-
-#-
+\#———————————————- \#- \#- \#-
 
 # Phylogenetic order
-For the 26 most prevalent species, and so the 21 crispr containing ones, we set the phylogenetic order like bellow. 
 
-```{r}
+For the 26 most prevalent species, and so the 21 crispr containing ones,
+we set the phylogenetic order like bellow.
+
+``` r
 species_levels_26 <- c("Lactobacillus_helveticus","Lactobacillus_acidophilus","Lactobacillus_delbrueckii",
                    "Companilactobacillus_versmoldensis","Lacticaseibacillus_rhamnosus","Lacticaseibacillus_casei",
                    "Latilactobacillus_curvatus","Loigolactobacillus_coryniformis","Leuconostoc_pseudomesenteroides",
@@ -759,22 +1097,12 @@ crisprscope_species_list <- CRISPRscope_tbl_26 %>% select(Organism) %>% distinct
 
 species_levels_21 <- tibble(species_levels_26) %>% filter(species_levels_26 %in% crisprscope_species_list)
 species_levels_21 <- species_levels_21$species_levels_26
-
 ```
 
+\#———————————————- \# Numbers Descriptive numbers of the data -&gt;
+check final version in 3.2 for a denser version \#\# CRISPR content
 
-
-
-
-
-
-
-#----------------------------------------------
-# Numbers 
- Descriptive numbers of the data -> check final version in 3.2 for a denser version
-## CRISPR content
-
-```{r, eval=F}
+``` r
 # Genomes with CRISPR / Species without CRISPR 
   
   library(dplyr)
@@ -853,10 +1181,9 @@ species_levels_21 <- species_levels_21$species_levels_26
   non_crispr_species$Species
 ```
 
-
-
 ## CRISPR arrays
-```{r, eval=F}
+
+``` r
 # Number of CRISPR arrays in the 26 species. 
   CRISPRscope_tbl_26 %>% dplyr::count(ArrayID)
   
@@ -876,22 +1203,20 @@ species_levels_21 <- species_levels_21$species_levels_26
   
 # Number of cas subtypes
   CRISPRscope_tbl_26 %>% select(Cas_subtype) %>% distinct()
-  
 ```
-
-
 
 # EXPORT subsets and fastas
 
-Export various files form the CRISPRscope_tbl_185. Used later in e.g. clustering, blast, etc. 
+Export various files form the CRISPRscope\_tbl\_185. Used later in
+e.g. clustering, blast, etc.
 
 ## Export spacers
 
-For clustering, export all distinct spacers and repeats (only filtered, meaning unique sequence / textbased)
-TODO: base this on the 100 cluster and not only on the seq.
-```{r, eval = F}
+For clustering, export all distinct spacers and repeats (only filtered,
+meaning unique sequence / textbased) TODO: base this on the 100 cluster
+and not only on the seq.
 
-
+``` r
 #
 # Export spacers
 #
@@ -902,19 +1227,14 @@ spacers_unique_filtered <- CRISPRscope_tbl_185 %>% select(SpacerSeq) %>% distinc
 
 dfs <- data.frame(spacers_unique_filtered$header, spacers_unique_filtered$SpacerSeq)
 dfs.fasta = dataframe2fas(dfs, file= paste(data_folder, "/EXPORT/fasta/CRISPRscope_185_spacers.fasta", sep=""))
-
-
-
 ```
-
 
 ## Export spacers for BLAST
 
-Unlike clustering where we just need the sequence and the cluster number, here we need all the sequences with their provenance (ID)
+Unlike clustering where we just need the sequence and the cluster
+number, here we need all the sequences with their provenance (ID)
 
-```{r, eval = F}
-
-
+``` r
 out2 <- CRISPRscope_tbl_185 %>%
   group_by(Organism, Strain, Scaffold, Array, Spacer) %>%
   mutate(header = paste(Organism, Strain, Scaffold, Array, Spacer, sep = "_") ,
@@ -924,20 +1244,14 @@ out2 <- CRISPRscope_tbl_185 %>%
 
 dfs <- data.frame(out2$header, out2$seq)
 dfs.fasta = dataframe2fas(dfs, file= paste(data_folder, "/EXPORT/fasta/CRISPRscope_185_spacers_BLAST.fasta", sep=""))
-
-
 ```
-
 
 ## Export repeats
 
-This fasta file contains only the genomic spacers. This is mainly to compare how many spacers will hit between genomic and metagenomic sets. 
+This fasta file contains only the genomic spacers. This is mainly to
+compare how many spacers will hit between genomic and metagenomic sets.
 
-
-```{r, eval = F}
-
-
-
+``` r
 repeats_unique <- CRISPRscope_tbl_185 %>% select(DR_seq) %>% distinct(DR_seq)
 
 repeats_unique <- repeats_unique %>% rowid_to_column("header") %>% add_column(sufx = "genomic") %>%
@@ -945,15 +1259,14 @@ repeats_unique <- repeats_unique %>% rowid_to_column("header") %>% add_column(su
 
 dfs <- data.frame(repeats_unique$header, repeats_unique$DR_seq)
 dfs.fasta = dataframe2fas(dfs, file=paste(data_folder, "/EXPORT/fasta/CRISPRscope_185_repeats.fasta", sep=""))
-
-
 ```
 
 ## Export fasta for overall clustering
 
-Here we add the "genomic" prefix to all sequences in order to recognise the cluster's provenance. 
-```{r, eval = F}
+Here we add the “genomic” prefix to all sequences in order to recognise
+the cluster’s provenance.
 
+``` r
 # Export Fasta
 
 ## Spacers
@@ -973,18 +1286,15 @@ repeats_unique <- CRISPRscope_tbl_185 %>% select(DR_seq) %>% distinct(DR_seq) %>
 
 dfsr <- data.frame(repeats_unique$header, repeats_unique$DR_seq)
 dfsr.fasta = dataframe2fas(dfsr, file=paste(data_folder, "/EXPORT/fasta/CRISPRscope_genomic_185_repeats.fasta", sep=""))
-
-
 ```
-
-
 
 ## Export Cas type for defense mechanisms ploting
 
-Here we extract the cas type(s) per species and per strain to plot the available defense mechanisms of each, alongside with the ones determined by the HMMs. 
+Here we extract the cas type(s) per species and per strain to plot the
+available defense mechanisms of each, alongside with the ones determined
+by the HMMs.
 
-```{r eval = F}
-
+``` r
 # Cas types (and not subtypes) per species 
 CRISPRscope_tbl_26 %>% 
   group_by(Organism) %>% 
@@ -1005,67 +1315,56 @@ CRISPRscope_tbl_26 %>%
   distinct() %>% 
   mutate(Class = if_else(Type %in% c("I","III","IV"), "Class 1", "Class 2", "NA")) %>% 
   write.csv(file = paste(data_folder, "/EXPORT/StrainCasType.csv", sep=""), quote = T, row.names = F, col.names = T)
-
 ```
 
+\#============================================== \#———————————————- \#
+Diverse stats and plots
 
-
-
-
-
-#==============================================
-#----------------------------------------------
-# Diverse stats and plots 
-
-
-
-
-##<p> Arrays per genomes
-
+\#\#
+<p>
 
 Arrays per genomes
-```{r eval=T}
 
+Arrays per genomes
+
+``` r
 CRISPRscope_tbl_26 %>% select(Organism, Strain, ArrayID) %>%  distinct() %>% 
   group_by(Strain) %>% mutate(nb_array_strain = n()) %>% select(Organism, Strain, nb_array_strain) %>% distinct() %>% 
   ungroup() %>% group_by(Organism) %>% summarise(avg_nb_array_strain = mean(nb_array_strain)) %>% distinct() %>% 
   ungroup() %>% dplyr::rename(Species = Organism) %>% 
   write.csv(file = paste(data_folder, "/EXPORT/MeanArrayPerStrain.csv", sep=""))
-
 ```
 
 Spacers per array
-```{r}
 
+``` r
 CRISPRscope_tbl_26 %>% select(Organism, Strain, ArrayID) %>%  distinct() %>% 
   group_by(Strain) %>% mutate(nb_array_strain = n()) %>% select(Organism, Strain, nb_array_strain) %>% distinct() %>% 
   write.csv(file = paste(data_folder, "/EXPORT/NbArrayPerStrain.csv", sep=""))
-
 ```
 
+Arrays per strains.
 
-
-
-
-Arrays per strains. 
-```{r}
+``` r
 CRISPRscope_tbl_26 %>% group_by(Strain) %>% summarise(nbArray = n_distinct(ArrayID)) %>% select(nbArray) %>% dplyr::count(nbArray) %>% 
   ggplot(aes(x = nbArray, y = n)) + 
   scale_x_discrete("Number of arrays per strain", c(1,2,3,4,5,6,7,8,9), c("1","2","3","4","5","6","7","8","9")) +
   geom_bar(stat="identity")
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-31-1.png)<!-- -->
 
+Here we count the number of assemblies available, and the ones left with
+high quality CRISPR in the end.
 
-Here we count the number of assemblies available, and the ones left with high quality CRISPR in the end. 
+\#\#
+<p>
 
-
-
-## <p> Databases of origin 
+Databases of origin
 
 Plot of assemblies count from NCBI and Dialact
 
-```{r fig.height=8, fig.width=8}
+``` r
 # databases origin in section "Raw data" or something like that, in the beginning
 db_plot <- bind_rows(dialact, ncbi) %>% filter(Species %in% final_species_list_26$Species) %>%  
   mutate(Species = gsub("_", " ", Species)) %>%
@@ -1124,25 +1423,35 @@ ggsave(
 db_plot
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-32-1.png)<!-- -->
 
-Data for the "number of assemblies per crispr containing species" plot.
+Data for the “number of assemblies per crispr containing species” plot.
 
-```{r}
+``` r
 # All genomes
 genome_count_total_ordered <- genome_count_TOTAL %>% arrange(desc(count)) %>% select(Species, count)
 
 # Total number of genomes
 genome_count_total_ordered %>% summarise(sum = sum(count))
+```
 
+    ## # A tibble: 1 x 1
+    ##     sum
+    ##   <dbl>
+    ## 1 14869
+
+``` r
 # Genomes with CRISPR
 genome_count_CCF26 <- CRISPRscope_tbl_26 %>%
   group_by(Organism) %>%
   summarize(Organism = Organism, yes_crispr = n_distinct(Strain)) %>%
   distinct(Organism, yes_crispr) %>%
   arrange(desc(yes_crispr))
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
 
-
+``` r
 # Join both
 joined_assemblies_count <- genome_count_CCF26 %>%
   left_join(genome_count_total_ordered, by = c("Organism" = "Species")) %>%
@@ -1151,7 +1460,14 @@ joined_assemblies_count <- genome_count_CCF26 %>%
 
 # Genomes count for the 26 species
 joined_assemblies_count %>% ungroup() %>%  summarise(sum_genomes = sum(count))
+```
 
+    ## # A tibble: 1 x 1
+    ##   sum_genomes
+    ##         <dbl>
+    ## 1        2360
+
+``` r
 # Transform for stacked and filter
 joined_assemblies_count_flat <- joined_assemblies_count %>%
   filter(Organism %in%  final_species_list_26$Species) %>%
@@ -1162,16 +1478,14 @@ joined_assemblies_count_flat <- joined_assemblies_count %>%
 lvls <- unique(joined_assemblies_count_flat$Organism)
 
 joined_assemblies_count_flat$Organism <- factor(joined_assemblies_count_flat$Organism, levels = lvls)
-
-
 ```
 
+\#\#
+<p>
 
-## <p> CRISPR containing assemblies - color
+CRISPR containing assemblies - color
 
-
-
-```{r fig.height=8, fig.width=22}
+``` r
 # Plot 
 
 colors_tmp <- species_colors %>% mutate(Organism = gsub("_", " ", Species)) %>% select(-Species) %>% gather(Organism, color) %>% unique()
@@ -1236,25 +1550,30 @@ ggsave(
 )
 
 plt
-
-
 ```
 
-
-
-
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-34-1.png)<!-- -->
 
 ## <stat> Assembly ratio
 
-```{r}
+``` r
 mean(joined_assemblies_count$CRISPR_assembly_ratio)
+```
+
+    ## [1] 0.6095238
+
+``` r
 sd(joined_assemblies_count$CRISPR_assembly_ratio)
 ```
 
-## <p> Assembly ratio
+    ## [1] 0.355997
 
-```{r fig.height=15, fig.width=25}
+\#\#
+<p>
 
+Assembly ratio
+
+``` r
 joined_assemblies_count_plot2 <- joined_assemblies_count %>% 
   filter(Organism %in%  final_species_list_26$Species) %>% 
   arrange(desc(CRISPR_assembly_ratio)) %>% 
@@ -1264,9 +1583,17 @@ joined_assemblies_count_plot2$Organism_txt = factor(joined_assemblies_count_plot
                                                     levels = joined_assemblies_count_plot2$Organism_txt)
 
 mean(joined_assemblies_count_plot2$CRISPR_assembly_ratio)
+```
+
+    ## [1] 0.6095238
+
+``` r
 sd(joined_assemblies_count_plot2$CRISPR_assembly_ratio)
+```
 
+    ## [1] 0.355997
 
+``` r
 plt_crispr_assembly_ratio <- joined_assemblies_count_plot2 %>% 
   ggplot(aes(x = Organism_txt, y = CRISPR_assembly_ratio))+
   geom_col(fill = "lightblue3")+
@@ -1321,23 +1648,48 @@ ggsave(
 )
 
 plt_crispr_assembly_ratio
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-36-1.png)<!-- -->
 
 ## distances and clusters
 
-```{r}
+``` r
 CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% summarise(n_diff_seq_per_cluster = n_distinct(SpacerSeq))
+```
 
+    ## # A tibble: 16,506 x 2
+    ##    cluster_spacer_identity n_diff_seq_per_cluster
+    ##                      <dbl>                  <int>
+    ##  1                      19                      2
+    ##  2                      20                      1
+    ##  3                      21                      1
+    ##  4                      22                      1
+    ##  5                      23                      1
+    ##  6                      24                      1
+    ##  7                      25                      1
+    ##  8                      27                      2
+    ##  9                      28                      1
+    ## 10                      29                      1
+    ## # ... with 16,496 more rows
+
+``` r
 CRISPRscope_tbl_26 %>% filter(cluster_spacer_identity == 23) %>% distinct(SpacerSeq) %>% unlist()
+```
 
+    ##                                           SpacerSeq 
+    ## "AAGGCGCCTATTTATCTTGTTTAGGCAGTCTTGATAAATACGAAGCGTC"
 
+``` r
 CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% summarise(mean_rel_dist = mean(rel_dist_leader), sd_rel_dist = sd(rel_dist_leader)) %>% drop_na() %>% 
   select(sd_rel_dist, mean_rel_dist) %>% 
   ggplot(aes(x=sd_rel_dist, y=mean_rel_dist)) +
   geom_point()
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-37-1.png)<!-- -->
+
+``` r
 # with 80% clusters
 CRISPRscope_tbl_26 %>% group_by(cluster_spacer) %>% summarise(mean_rel_dist = mean(rel_dist_leader), sd_rel_dist = sd(rel_dist_leader), idclst = identity_spacer_cluster80) %>% drop_na() %>% 
   mutate(idclst = abs(idclst)) %>% 
@@ -1348,71 +1700,118 @@ CRISPRscope_tbl_26 %>% group_by(cluster_spacer) %>% summarise(mean_rel_dist = me
   theme_classic() +
   xlab("SD of the relative distance within 80% id clusters") +
   ylab("Mean  of the relative distance within 80% id clusters")
+```
 
+    ## `summarise()` has grouped output by 'cluster_spacer'. You can override using the `.groups` argument.
 
+    ## Adding missing grouping variables: `cluster_spacer`
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-37-2.png)<!-- -->
+
+``` r
 CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% summarise(mean_rel_dist = mean(rel_dist_leader), sd_rel_dist = sd(rel_dist_leader)) %>% drop_na() %>% 
   select(sd_rel_dist, mean_rel_dist) %>% 
   ggplot(aes(x=mean_rel_dist)) +
   geom_histogram()
-
-CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% dplyr::count()
-CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% dplyr::count() %>% filter(n==2)
-
-
-
 ```
 
+    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-37-3.png)<!-- -->
 
+``` r
+CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% dplyr::count()
+```
+
+    ## # A tibble: 16,506 x 2
+    ## # Groups:   cluster_spacer_identity [16,506]
+    ##    cluster_spacer_identity     n
+    ##                      <dbl> <int>
+    ##  1                      19     2
+    ##  2                      20     1
+    ##  3                      21     1
+    ##  4                      22     1
+    ##  5                      23     1
+    ##  6                      24     1
+    ##  7                      25     1
+    ##  8                      27     2
+    ##  9                      28     1
+    ## 10                      29     1
+    ## # ... with 16,496 more rows
+
+``` r
+CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% dplyr::count() %>% filter(n==2)
+```
+
+    ## # A tibble: 2,894 x 2
+    ## # Groups:   cluster_spacer_identity [2,894]
+    ##    cluster_spacer_identity     n
+    ##                      <dbl> <int>
+    ##  1                      19     2
+    ##  2                      27     2
+    ##  3                      58     2
+    ##  4                     125     2
+    ##  5                     134     2
+    ##  6                     202     2
+    ##  7                     244     2
+    ##  8                     336     2
+    ##  9                     365     2
+    ## 10                     439     2
+    ## # ... with 2,884 more rows
 
 ## Species per cas subtypes
 
-```{r}
+``` r
 a <- CRISPRscope_tbl_185 %>% 
   select(Cas_subtype, Organism) %>%  
   group_by(Cas_subtype) %>% 
   summarise(Cas_subtype = Cas_subtype, nb_species = n_distinct(Organism)) %>% 
   distinct() %>% mutate(Dataset = "G185")
+```
 
+    ## `summarise()` has grouped output by 'Cas_subtype'. You can override using the `.groups` argument.
 
-
-
-
+``` r
 b <- CRISPRscope_tbl_26 %>% 
   select(Cas_subtype, Organism) %>%  
   group_by(Cas_subtype) %>% 
   summarise(Cas_subtype = Cas_subtype, nb_species = n_distinct(Organism)) %>% 
   distinct() %>% mutate(Dataset = "G26")
+```
 
+    ## `summarise()` has grouped output by 'Cas_subtype'. You can override using the `.groups` argument.
+
+``` r
 bind_rows(a,b) %>% write.csv(file = paste(data_folder, "/EXPORT/nb_species_per_subtype_26_185.csv", sep = ""), row.names = F)
 ```
+
 ## 185 species cas subtypes
 
-```{r}
+``` r
 CRISPRscope_tbl_185 %>% 
   select(Cas_subtype, Organism) %>% distinct() %>%  group_by(Organism) %>% mutate(count = n()) %>% 
   select(Organism, Cas_subtype, count) %>% 
   write.csv(file = paste(data_folder, "/EXPORT/Cas_subtypes_per_species_185.csv", sep=""), row.names = F)
 ```
 
+\#\#
+<p>
 
+Spacer sizes Check ridgeline plots -&gt; cleaner version Here we can
+nicely see the two peaks, at 30 and 33
 
-
-
-## <p> Spacer sizes
-Check ridgeline plots -> cleaner version
-Here we can nicely see the two peaks, at 30 and 33
-
-
-```{r}
+``` r
 # All spacers
 
 CRISPRscope_tbl_26 %>% select(SpacerSeq) %>% 
   mutate(l = str_length(SpacerSeq)) %>% dplyr::count(l) %>% 
   ggplot(aes(x=l, y=n)) +
   geom_col()
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-40-1.png)<!-- -->
 
+``` r
 # One per 100% identity cluster
 
 CRISPRscope_tbl_26 %>% select(SpacerSeq, cluster_spacer_identity) %>% 
@@ -1421,12 +1820,15 @@ CRISPRscope_tbl_26 %>% select(SpacerSeq, cluster_spacer_identity) %>%
   mutate(l = str_length(SpacerSeq)) %>% dplyr::count(l) %>% 
   ggplot(aes(x=l, y=n)) +
   geom_col()
-
 ```
-##<p> spacer count per array
 
-```{r fig.height=8, fig.width=15}
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-40-2.png)<!-- -->
+\#\#
+<p>
 
+spacer count per array
+
+``` r
 tmp_arrcount <- CRISPRscope_tbl_26 %>% 
   select(Organism, ArrayID, SpacerSeq, Cas_class, Cas_subtype) 
 
@@ -1436,27 +1838,28 @@ tmp_arrcount <- CRISPRscope_tbl_26 %>%
 tmp_arrcount %>% dplyr::count(ArrayID, Cas_subtype) %>% ggplot(aes(x=n)) +
   geom_bar() +
   facet_wrap(~Cas_subtype)
-
-
 ```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
 
 ## Total number of spacers
 
-```{r}
+``` r
 CRISPRscope_tbl_26 %>% summarise(nb_spacers = n())  # 51019
 ```
 
+    ## # A tibble: 1 x 1
+    ##   nb_spacers
+    ##        <int>
+    ## 1      50955
 
-
-#----------------------------------------------
-# Ridgeline plot 
-
+\#———————————————- \# Ridgeline plot
 
 Ridgeline plot of spacer size and gc content
 
 ## Spacers GC content
-```{r fig.height=8, fig.width=5}
 
+``` r
 ridge_plt <- CRISPRscope_tbl_26 %>%
   inner_join(species_colors, by = c("Organism" = "Species"))
 
@@ -1514,15 +1917,26 @@ plt1 <- ridge_plt %>%
   ylab("") +
   xlab("Spacers GC content")+
   xlim(0,85)
-
 ```
 
 Repeat GC content density
 
-```{r}
+``` r
 library(ggpubr)
+```
 
+    ## 
+    ## Attachement du package : 'ggpubr'
 
+    ## L'objet suivant est masqué depuis 'package:egg':
+    ## 
+    ##     ggarrange
+
+    ## L'objet suivant est masqué depuis 'package:cowplot':
+    ## 
+    ##     get_legend
+
+``` r
 data <- CRISPRscope_tbl_26 %>% 
   select(spacer_gc_content) 
 
@@ -1531,19 +1945,30 @@ plt_dsty_spacer_gc <- ggdensity(data, x = "spacer_gc_content", add = "mean") +
   ylab("Density")+
   ylim(0,0.05)+
   xlim(0,85)
+```
 
+    ## Warning: geom_vline(): Ignoring `mapping` because `xintercept` was provided.
 
+    ## Warning: geom_vline(): Ignoring `data` because `xintercept` was provided.
+
+``` r
 g_sp_gc <- egg::ggarrange(
   plt_dsty_spacer_gc, plt1,
   nrow = 2, ncol = 1, heights = c(1, 6), widths = c(1)
 )
-
 ```
 
+    ## Warning: Removed 8 rows containing non-finite values (stat_density).
+
+    ## Picking joint bandwidth of 2.17
+
+    ## Warning: Removed 8 rows containing non-finite values (stat_density_ridges).
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-44-1.png)<!-- -->
 
 ## Repeats GC content
-```{r fig.height=8, fig.width=5}
 
+``` r
 ridge_plt11 <- CRISPRscope_tbl_26 %>%
   inner_join(species_colors, by = c("Organism" = "Species"))
 
@@ -1601,14 +2026,11 @@ plt11 <- ridge_plt11 %>%
   ylab("") +
   xlab("Repeats GC content") +
   xlim(0,85)
-
-
-
 ```
 
 Repeat GC content density
 
-```{r}
+``` r
 library(ggpubr)
 
 
@@ -1620,21 +2042,28 @@ plt_dsty_repeat_gc <- ggdensity(data, x = "repeat_gc_content", add = "mean") +
   xlim(0,85)+
   ylim(0,0.05)+
   ylab("")
+```
 
+    ## Warning: geom_vline(): Ignoring `mapping` because `xintercept` was provided.
 
+    ## Warning: geom_vline(): Ignoring `data` because `xintercept` was provided.
+
+``` r
 g_dr_gc <- egg::ggarrange(
   plt_dsty_repeat_gc, plt11,
   nrow = 2, ncol = 1, heights = c(1, 6), widths = c(1)
 )
-
 ```
 
+    ## Picking joint bandwidth of 3.4
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-46-1.png)<!-- -->
 
 ## Spacer length
-Spacer length
-```{r fig.height=12, fig.width=18}
 
+Spacer length
+
+``` r
 ridge_plt2 <- CRISPRscope_tbl_26 %>%
   mutate(spacer_length = nchar(SpacerSeq)) %>% 
   inner_join(species_colors, by = c("Organism" = "Species"))
@@ -1691,13 +2120,11 @@ plt2 <- ridge_plt2 %>%
   ) +
   ylab("") +
   xlab("Spacers length")
-
-
 ```
 
 ## Spacer length density
 
-```{r}
+``` r
 library(ggpubr)
 
 
@@ -1708,19 +2135,26 @@ data <- CRISPRscope_tbl_26 %>%
 plt_dsty <- ggdensity(data, x = "spacer_length", add = "mean") + 
   xlab("")+
   ylab("")
+```
 
+    ## Warning: geom_vline(): Ignoring `mapping` because `xintercept` was provided.
 
+    ## Warning: geom_vline(): Ignoring `data` because `xintercept` was provided.
+
+``` r
 g_spsize <- egg::ggarrange(
   plt_dsty, plt2,
   nrow = 2, ncol = 1, heights = c(1, 6), widths = c(1)
 )
-
 ```
 
+    ## Picking joint bandwidth of 0.291
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-48-1.png)<!-- -->
 
 ## Spacers count
 
-```{r}
+``` r
 # ridge_plt2 <- CRISPRscope_tbl_26 %>%
 #   mutate(spacer_length = nchar(SpacerSeq)) %>% 
 #   inner_join(species_colors, by = c("Organism" = "Species"))
@@ -1730,7 +2164,11 @@ ridge_plt3 <- CRISPRscope_tbl_26 %>%
   summarise(Organism = Organism, Strain = Strain, nb_spacers = n()) %>% 
   distinct() %>% 
   inner_join(species_colors, by = c("Organism" = "Species"))
+```
 
+    ## `summarise()` has grouped output by 'Strain'. You can override using the `.groups` argument.
+
+``` r
 ridge_plt3$Organism = factor(ridge_plt3$Organism, levels = species_levels_21)
 
 cols <- as.character(ridge_plt2$color)
@@ -1795,38 +2233,43 @@ data <- CRISPRscope_tbl_26 %>%
 plt_sp_count_dsty <- ggdensity(data, x = "spacer_count", add = "mean") + 
   xlab("")+
   ylab("")
+```
 
+    ## Warning: geom_vline(): Ignoring `mapping` because `xintercept` was provided.
 
+    ## Warning: geom_vline(): Ignoring `data` because `xintercept` was provided.
+
+``` r
 g_spcount <- egg::ggarrange(
   plt_sp_count_dsty, plt3,
   nrow = 2, ncol = 1, heights = c(1, 6), widths = c(1)
 )
 ```
 
+    ## Picking joint bandwidth of 10.9
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
 
 ## Host GC content
 
-```{r}
+``` r
 ridge_plt4 <- CRISPRscope_tbl_26 %>% 
   group_by(Organism) %>% 
   summarise(Organism = Organism, Strain = Strain, gc_host = host_gc_content) %>% 
   distinct() %>% 
   inner_join(species_colors, by = c("Organism" = "Species"))
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
 
+``` r
 ridge_plt4$Organism = factor(ridge_plt4$Organism, levels = species_levels_21)
 
 cols <- as.character(ridge_plt4$color)
 names(cols) <- as.character(ridge_plt4$Organism)
-
-
 ```
 
-
-
-
-```{r}
+``` r
 plt4 <- ridge_plt4 %>% 
   ggplot() +
   geom_density_ridges(aes(x = gc_host, y = Organism, fill = Organism), scale = 1) +
@@ -1875,40 +2318,58 @@ plt4 <- ridge_plt4 %>%
   xlab("Host GC content")
 
 plt4
+```
 
+    ## Picking joint bandwidth of 0.454
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-51-1.png)<!-- -->
 
+``` r
 library(ggpubr)
 
 
 data <- CRISPRscope_tbl_26 %>% 
   group_by(Organism) %>% 
   summarise(gc_content = host_gc_content)
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+``` r
 plt_gc_content_dsty <- ggdensity(data, x = "gc_content", add = "mean") + 
   xlab("")+
   ylab("")+
   xlim(c(0,80))
+```
 
+    ## Warning: geom_vline(): Ignoring `mapping` because `xintercept` was provided.
 
+    ## Warning: geom_vline(): Ignoring `data` because `xintercept` was provided.
+
+``` r
 g_gccont <- egg::ggarrange(
   plt_gc_content_dsty, plt4,
   nrow = 2, ncol = 1, heights = c(1, 6), widths = c(1)
 )
 ```
 
+    ## Picking joint bandwidth of 0.454
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-51-2.png)<!-- -->
 
 ## Merge plots
 
-
-```{r fig.width=16}
+``` r
 require(gridExtra)
 G26_overview_plt <- grid.arrange(g_sp_gc,g_dr_gc,g_gccont,g_spsize,g_spcount,
              ncol=5, 
              widths=c(80,40,40,40,40)
              )
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
+
+``` r
 ggsave(
   plot = G26_overview_plt,
   file = paste(google_drive_folder,"/G26_overview_plot.pdf", sep = ""),
@@ -1928,14 +2389,11 @@ ggsave(
   units = "cm",
   dpi = 800
 )
-
 ```
 
+\#———————————————- \# Host GC content boxplot
 
-#----------------------------------------------
-# Host GC content boxplot
-
-```{r fig.height=12, fig.width=15}
+``` r
 GC_contents_plots <- CRISPRscope_tbl_26 %>% select(Organism, Strain, host_gc_content, spacer_gc_content, repeat_gc_content) %>% 
   gather(host_gc_content, spacer_gc_content, repeat_gc_content, key="group", value="value") %>% distinct() %>% 
   mutate(Organism = gsub("_", " ", Organism)) %>% 
@@ -1987,19 +2445,113 @@ ggsave(
   units = "cm",
   dpi = 800
 )
+```
 
+    ## Warning in wilcox.test.default(c(54.5912632075472, 53.7266666666667,
+    ## 55.8436666666667, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(58.815725, 59.628925, 58.9490111111111, :
+    ## cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(58.815725, 59.628925, 58.9490111111111, :
+    ## cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(62.5, 50, 56.25, 65.625, 59.375, 71.875, :
+    ## cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(46.8592909090909, 45.3155959183674,
+    ## 45.532734375, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(40.9033903846154, 42.620281097561,
+    ## 41.5321164179104, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(42.3849542857143, 42.5181033333333,
+    ## 40.2551333333333, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(38.6756037453184, 37.608261,
+    ## 38.3690619565217, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(42.2284436090226, 40.71668, 42.1672743842364, :
+    ## cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(30.2903, 34.0425860824742, 35.1903720930233, :
+    ## cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(39.6113142857143, 39.0110738738739,
+    ## 39.049367826087: cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(38.954014, 36.2960333333333,
+    ## 36.7945333333333, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(33.0736, 31.9873494845361),
+    ## c(17.6470588235294, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(33.0736, 31.9873494845361),
+    ## c(52.7777777777778, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(17.6470588235294, 43.2432432432432,
+    ## 29.7297297297297, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(37.801258974359, 47.5694611111111, 38.682536, :
+    ## cannot compute exact p-value with ties
+
+``` r
 GC_contents_plots
 ```
 
+    ## Warning in wilcox.test.default(c(54.5912632075472, 53.7266666666667,
+    ## 55.8436666666667, : cannot compute exact p-value with ties
 
+    ## Warning in wilcox.test.default(c(58.815725, 59.628925, 58.9490111111111, :
+    ## cannot compute exact p-value with ties
 
+    ## Warning in wilcox.test.default(c(58.815725, 59.628925, 58.9490111111111, :
+    ## cannot compute exact p-value with ties
 
+    ## Warning in wilcox.test.default(c(62.5, 50, 56.25, 65.625, 59.375, 71.875, :
+    ## cannot compute exact p-value with ties
 
-#----------------------------------------------
-# ANI
+    ## Warning in wilcox.test.default(c(46.8592909090909, 45.3155959183674,
+    ## 45.532734375, : cannot compute exact p-value with ties
 
-```{bash, eval=FALSE}
+    ## Warning in wilcox.test.default(c(40.9033903846154, 42.620281097561,
+    ## 41.5321164179104, : cannot compute exact p-value with ties
 
+    ## Warning in wilcox.test.default(c(42.3849542857143, 42.5181033333333,
+    ## 40.2551333333333, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(38.6756037453184, 37.608261,
+    ## 38.3690619565217, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(42.2284436090226, 40.71668, 42.1672743842364, :
+    ## cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(30.2903, 34.0425860824742, 35.1903720930233, :
+    ## cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(39.6113142857143, 39.0110738738739,
+    ## 39.049367826087: cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(38.954014, 36.2960333333333,
+    ## 36.7945333333333, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(33.0736, 31.9873494845361),
+    ## c(17.6470588235294, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(33.0736, 31.9873494845361),
+    ## c(52.7777777777778, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(17.6470588235294, 43.2432432432432,
+    ## 29.7297297297297, : cannot compute exact p-value with ties
+
+    ## Warning in wilcox.test.default(c(37.801258974359, 47.5694611111111, 38.682536, :
+    ## cannot compute exact p-value with ties
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
+
+\#———————————————- \# ANI
+
+``` bash
 #!/bin/bash
 
 #SBATCH -o slurm_output/fastani-output.txt
@@ -2070,53 +2622,19 @@ wc -l /data/projects/p539_crisprscope/8_fastani/log/filenames_all_fastani.txt
 fastANI --fragLen 1000 -t 37 --ql /data/projects/p539_crisprscope/8_fastani/log/filenames_all_fastani.txt \
   --rl /data/projects/p539_crisprscope/8_fastani/log/filenames_all_fastani.txt \
   -o /data/projects/p539_crisprscope/8_fastani/20210511_run/20210511_ANI_output_all.txt
-
 ```
 
+ANI Import the Average Nucleotide Identity (ANI) computed for each pair
+of strains
 
+ANI will be calculated only for species whos been retained (high
+prevalence in samples)
 
-ANI Import the Average Nucleotide Identity (ANI) computed for each pair of strains
+Heavy load - compute proportion of shared spacers First, we remove from
+the ANI file the strains that have no crispr detected. This reduces the
+computation.
 
-ANI will be calculated only for species whos been retained (high prevalence in samples)
-
-```{r, eval=FALSE, echo=FALSE}
-# Read ANI file ==> read only cleaned version
-
-ani_merged <- tibble()
-
-
-
-results_ani <- list.files(path = paste(data_folder, "/fastANI_results/MERGED/", sep=""))
-
-for (ani in results_ani){
-  print(ani)
-  tmp <- read_delim(file = paste(data_folder, "/fastANI_results/MERGED/", ani, sep=""), 
-                  "\t", escape_double = FALSE, 
-                  col_names = c("query","ref","ANI","bidirectional_fragment_mapping", "total_query_fragment"),
-                  trim_ws = TRUE)
-  
-  ani_merged <- bind_rows(ani_merged, tmp)
-}
-
-ani_merged <- ani_merged %>%
-  separate(query,into = c("a","a1","a2","a3","a4","a5","a6","a7","species_query","strain_query") , sep = "/") %>%
-  separate(ref,into = c("b","b1","b2","b3","b4","b5","b6","b7","species_ref","strain_ref") , sep = "/") %>%
-  select(species_query, strain_query, species_ref, strain_ref, ANI, bidirectional_fragment_mapping, total_query_fragment) %>%
-  filter(species_query == species_ref) %>%  # Only compare within species. Precaution, ANI have been computed only within species.
-  filter(strain_query != strain_ref) %>%  # Remove strains compared to themselves
-  mutate(strain_query_2 = str_replace(strain_query, ".fna", "")) %>% mutate(strain_query = strain_query_2) %>% # remove the .fna after strain name
-  mutate(strain_ref_2 = str_replace(strain_ref, ".fna", "")) %>% mutate(strain_ref = strain_ref_2) %>% 
-  select(-strain_query_2, -strain_ref_2)
-  
-
-ani_merged %>%
-  write_csv(file = paste(data_folder, "/IMPORT_EXPORT/MERGED_ANI_output_clean.csv", sep=""))
-```
-
-
-Heavy load - compute proportion of shared spacers
-First, we remove from the ANI file the strains that have no crispr detected. This reduces the computation.
-```{r, eval = FALSE}
+``` r
 ani_merged <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/MERGED_ANI_output_clean.csv", sep=""))
 
 
@@ -2144,12 +2662,12 @@ ANI_merged_filtered <- ani_merged %>%
 distinct(ANI_merged_filtered %>% select(strain_query)) # -> 1196 rows
 
 ANI_merged_filtered %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""), row.names=FALSE)
-
 ```
 
-Heavier load - for each pair compute the percentage of shared spacers. Takes around an hour or two depending on the hardware. (locally)
-```{r, eval = FALSE}
+Heavier load - for each pair compute the percentage of shared spacers.
+Takes around an hour or two depending on the hardware. (locally)
 
+``` r
 ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
 
 # Function to get 
@@ -2199,20 +2717,23 @@ ANI_Shared_spacers_strain_pair <- ANI_Shared_spacers_strain_pair_raw %>%
 
 ANI_Shared_spacers_strain_pair %>% 
   write.csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair2.csv", sep=""))
-
-
-
 ```
 
+\#\# TBR
+<p>
 
-## TBR <p> colors test
+colors test
 
-ANI vs Proportion of shared spacers. We can observe a surprising group with Lacticaseibacillus_rhamnosus that seem to have a high proportion of shared spacers even with a lower ANI than the other strains seem to share.
+ANI vs Proportion of shared spacers. We can observe a surprising group
+with Lacticaseibacillus\_rhamnosus that seem to have a high proportion
+of shared spacers even with a lower ANI than the other strains seem to
+share.
 
 Zero Shared Spacers REMOVED !!!
 
 Validate coloring
-```{r eval=F, fig.height=8, fig.width=15}
+
+``` r
 # colors_tmp <- species_colors %>% mutate(Organism = gsub("_", " ", Species)) %>% select(-Species) %>% gather(Organism, color) %>% unique()
 # joined_assemblies_count_flat_color <- joined_assemblies_count_flat %>% 
 #   inner_join(colors_tmp, by = "Organism") %>% arrange(desc(count))
@@ -2224,16 +2745,33 @@ Validate coloring
 # plt
 ```
 
-##<p> ANI MAIN PLOT
+\#\#
+<p>
 
-Filter the data by removing all strain pairs that do not share spacers at all and by taking only ANI over 95%, the species limit.
+ANI MAIN PLOT
 
+Filter the data by removing all strain pairs that do not share spacers
+at all and by taking only ANI over 95%, the species limit.
 
-```{r fig.height=8, fig.width=15}
+``` r
 ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair2.csv", sep="")) # 21 species
+```
 
+    ## New names:
+    ## * `` -> ...1
 
+    ## Rows: 160236 Columns: 9
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (4): species_query, strain_query, species_ref, strain_ref
+    ## dbl (5): ...1, ANI, bidirectional_fragment_mapping, total_query_fragment, sh...
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # Join colors and filter small ANI and zero shared spacers
 ANI_Shared_spacers_strain_pair_filtered <- ANI_Shared_spacers_strain_pair %>% select(species_query, ANI, shared_spacer_numeric) %>% 
   left_join(species_colors, by=c("species_query" = "Species")) %>% 
@@ -2245,20 +2783,27 @@ ANI_Shared_spacers_strain_pair_filtered <- ANI_Shared_spacers_strain_pair %>% se
 
 ANI_Shared_spacers_strain_pair_filtered %>% 
   write_csv(paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep="")) 
-
 ```
 
-
-
-
-
-```{r fig.height=6, fig.width=10}
+``` r
 library(stats)
 ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep="")) %>% 
   #filter(species_query == "Lacticaseibacillus_rhamnosus") %>% 
   mutate(species_query = gsub("_", " ", species_query))
+```
 
+    ## Rows: 53094 Columns: 4
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (2): species_query, col
+    ## dbl (2): ANI, shared_spacer_numeric
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 cols <- as.character(ANI_Shared_spacers_strain_pair_filtered$col)
 names(cols) <- as.character(ANI_Shared_spacers_strain_pair_filtered$species_query)
 
@@ -2314,7 +2859,17 @@ plot_per_species <- ANI_Shared_spacers_strain_pair_filtered  %>%
 
 plot_per_species <-
   ggMarginal(plot_per_species, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+```
 
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+``` r
 #, labels = function(x) str_replace(x, "_", " ")
 #scale_color_discrete(labels = function(x) str_replace(x, "_", " ")) +    # HERE PROBLEM   # Remove the '_' of the species names in plot, not in data
 
@@ -2333,17 +2888,31 @@ plot_per_species <-
 plot_per_species
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-60-1.png)<!-- -->
 
-#TODO slope glm
+\#TODO slope glm
 
 redo the plot without logscale but with geom-smooth
-```{r fig.height=6, fig.width=10}
+
+``` r
 library(stats)
 ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep="")) %>% 
   #filter(species_query == "Lacticaseibacillus_rhamnosus") %>% 
   mutate(species_query = gsub("_", " ", species_query))
+```
 
+    ## Rows: 53094 Columns: 4
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (2): species_query, col
+    ## dbl (2): ANI, shared_spacer_numeric
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 cols <- as.character(ANI_Shared_spacers_strain_pair_filtered$col)
 names(cols) <- as.character(ANI_Shared_spacers_strain_pair_filtered$species_query)
 
@@ -2396,11 +2965,31 @@ plot_per_species <- ANI_Shared_spacers_strain_pair_filtered  %>%
   guides(color = guide_legend(override.aes = list(alpha = 1, size = 2))) + # HERE PROBLEM
   labs(colour='Species') +
   ylim(c(0,100))
+```
 
+    ## Scale for 'y' is already present. Adding another scale for 'y', which will
+    ## replace the existing scale.
 
+``` r
 plot_per_species <-
   ggMarginal(plot_per_species, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+```
 
+    ## `geom_smooth()` using formula 'y ~ x'
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## `geom_smooth()` using formula 'y ~ x'
+
+    ## Warning: Removed 52 rows containing missing values (geom_smooth).
+
+``` r
 #, labels = function(x) str_replace(x, "_", " ")
 #scale_color_discrete(labels = function(x) str_replace(x, "_", " ")) +    # HERE PROBLEM   # Remove the '_' of the species names in plot, not in data
 
@@ -2419,19 +3008,35 @@ ggsave(
 plot_per_species
 ```
 
-```{r}
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-61-1.png)<!-- -->
+
+``` r
 lm(ANI_Shared_spacers_strain_pair_filtered$shared_spacer_numeric ~ ANI_Shared_spacers_strain_pair_filtered$ANI)
+```
 
+    ## 
+    ## Call:
+    ## lm(formula = ANI_Shared_spacers_strain_pair_filtered$shared_spacer_numeric ~ 
+    ##     ANI_Shared_spacers_strain_pair_filtered$ANI)
+    ## 
+    ## Coefficients:
+    ##                                 (Intercept)  
+    ##                                    -4074.22  
+    ## ANI_Shared_spacers_strain_pair_filtered$ANI  
+    ##                                       41.34
 
+``` r
 summary(lm(ANI_Shared_spacers_strain_pair_filtered$shared_spacer_numeric ~ ANI_Shared_spacers_strain_pair_filtered$ANI))$r.squared
 ```
 
+    ## [1] 0.4835217
 
+\#\#
+<p>
 
-##<p> Main plot 2 - 50-100 y axis
+Main plot 2 - 50-100 y axis
 
-```{r fig.height=8, fig.width=12}
-
+``` r
 plot_per_species2 <- ANI_Shared_spacers_strain_pair_filtered  %>% 
   filter(shared_spacer_numeric >= 50) %>% 
   ggplot(aes(x=ANI, y=shared_spacer_numeric, label = rev(species_query))) + 
@@ -2480,9 +3085,17 @@ plot_per_species2 <- ANI_Shared_spacers_strain_pair_filtered  %>%
 
 plot_per_species2 <-
   ggMarginal(plot_per_species2, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+```
 
+    ## Warning: Ignoring unknown parameters: outlier.size
 
+    ## Warning: Ignoring unknown parameters: outlier.size
 
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+``` r
 ggsave(
   plot = plot_per_species2,
   #file = "./IMG/report2/ANISpacerShared.pdf",
@@ -2495,13 +3108,13 @@ ggsave(
 )
 
 plot_per_species2
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-63-1.png)<!-- -->
 
 ## <ANI numbers>
-```{r}
 
+``` r
 # 
 # ANI_Shared_spacers_strain_pair %>% filter(ANI < 95 & shared_spacer_numeric == 0) %>% select(species_query) %>% distinct() #454 
 # ANI_Shared_spacers_strain_pair %>% filter(ANI < 95 & shared_spacer_numeric > 0) # 0
@@ -2511,15 +3124,14 @@ plot_per_species2
 # ANI_Shared_spacers_strain_pair %>% filter(shared_spacer_numeric < 90 & shared_spacer_numeric > 0) # 57,060 rows
 # ANI_Shared_spacers_strain_pair %>% filter(shared_spacer_numeric > 90) %>% select(species_query) %>% distinct() # 18 Species
 # #ANI_Shared_spacers_strain_pair %>% filter(shared_spacer_numeric >= 90) %>% ggplot(aes(x = ANI, y=shared_spacer_numeric)) +
-  
 ```
 
+\#\#
+<p>
 
+Histogram proportion with 0 shared spacers
 
-## <p> Histogram proportion with 0 shared spacers
-
-```{r fig.height=8, fig.width=15}
-
+``` r
 df_seg2 <- ANI_Shared_spacers_strain_pair %>% 
   summarise(zero_shared = shared_spacer_numeric == 0) %>% 
   dplyr::count(zero_shared) %>% 
@@ -2578,24 +3190,27 @@ df_seg2 <- ANI_Shared_spacers_strain_pair %>%
 
 
 df_seg2
-
-
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-65-1.png)<!-- -->
 
-## <p> Density ANI for >90% shared spacers
+\#\#
+<p>
 
-```{r fig.height=10, fig.width=15}
+Density ANI for &gt;90% shared spacers
 
-
-
+``` r
 df3 <- ANI_Shared_spacers_strain_pair  %>% filter(shared_spacer_numeric >= 90)
 
 
 
 # Only closely related strains....
 mean(df3$ANI)
+```
+
+    ## [1] 99.96415
+
+``` r
 #... share more than 90% of their spacers.
 
 
@@ -2651,17 +3266,16 @@ ggsave(
 )
 
 plot_ANI45
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-66-1.png)<!-- -->
 
+\#\#
+<p>
 
-## <p> Density Shared sp. for >99% similar strain.
+Density Shared sp. for &gt;99% similar strain.
 
-
-```{r fig.height=10, fig.width=15}
-
-
+``` r
 df3 <- ANI_Shared_spacers_strain_pair  %>% filter(ANI > 99)
 #df3$shared_spacer_numeric = df3$shared_spacer_numeric + 0.1
 
@@ -2714,24 +3328,37 @@ plot_ANI3 <- df3 %>% ggplot(aes(x=shared_spacer_numeric)) +
 # )
 
 plot_ANI3
-
 ```
 
-#----------------------------------------------
-# Per-array ANI / shared spacers
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-67-1.png)<!-- -->
 
-To avoid the averaging of Array content/stability, do a pairwise comparison of all crispr arrays (how many shared spacers).
-Then, take arrays within species and join the pairwise strain ANI. 
-Same strain -> 100% ANI
-Different strain/same species -> get from ANI df
-Different species -> ignore 
+\#———————————————- \# Per-array ANI / shared spacers
 
-```{r}
+To avoid the averaging of Array content/stability, do a pairwise
+comparison of all crispr arrays (how many shared spacers). Then, take
+arrays within species and join the pairwise strain ANI. Same strain
+-&gt; 100% ANI Different strain/same species -&gt; get from ANI df
+Different species -&gt; ignore
+
+``` r
 # library(furrr)
 
 # DATA
 ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
+```
 
+    ## Rows: 160236 Columns: 7
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (4): species_query, strain_query, species_ref, strain_ref
+    ## dbl (3): ANI, bidirectional_fragment_mapping, total_query_fragment
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 #
 # Get the percentage of common spacers between two arrays
 #
@@ -2792,8 +3419,11 @@ arrays_pairs_tbl <- tibble(Array1 = arrays_pairs[1,], Array2 = arrays_pairs[2,])
   #mutate(perc_shared = perc_shared * 100) %>% 
   mutate(nucleotide_diversity = (bidirectional_fragment_mapping * 1000)*(1/ANI)) %>% 
   mutate(turnover_rate = nucleotide_diversity/unique_sp)
+```
 
+    ## `summarise()` has grouped output by 'Organism1', 'Strain1', 'Array1', 'Organism2', 'Strain2', 'Array2', 'ANI', 'bidirectional_fragment_mapping', 'total_query_fragment'. You can override using the `.groups` argument.
 
+``` r
 # Forgot this... add in summarise for next run
 arrays_pairs_tbl <- arrays_pairs_tbl %>% 
   left_join(CRISPRscope_tbl_26 %>% select(ArrayID, Cas_subtype) %>% distinct(), by = c("Array1" = "ArrayID")) %>% 
@@ -2805,15 +3435,21 @@ arrays_pairs_tbl <- arrays_pairs_tbl %>%
 
 arrays_pairs_tbl %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
 colnames(arrays_pairs_tbl)
-
-
 ```
 
+    ##  [1] "Organism1"                      "Strain1"                       
+    ##  [3] "Array1"                         "Cas_subtype1"                  
+    ##  [5] "Organism2"                      "Strain2"                       
+    ##  [7] "Array2"                         "Cas_subtype2"                  
+    ##  [9] "ANI"                            "bidirectional_fragment_mapping"
+    ## [11] "total_query_fragment"           "mean_notshared"                
+    ## [13] "numb_shared"                    "perc_shared"                   
+    ## [15] "unique_sp"                      "nucleotide_diversity"          
+    ## [17] "turnover_rate"
 
 Recreate figure 2A (ANI vs Shared spacers)
 
-
-```{r, fig.height=8, fig.width=12}
+``` r
 # arrays_pairs_tbl <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
 
 data_plot <- arrays_pairs_tbl %>% select(Organism1, ANI, perc_shared) %>% 
@@ -2882,7 +3518,17 @@ plot_per_species <- data_plot  %>%
 
 plot_per_species <-
   ggMarginal(plot_per_species, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
+```
 
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+``` r
 #, labels = function(x) str_replace(x, "_", " ")
 #scale_color_discrete(labels = function(x) str_replace(x, "_", " ")) +    # HERE PROBLEM   # Remove the '_' of the species names in plot, not in data
 
@@ -2912,42 +3558,21 @@ ggsave(
 plot_per_species
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-69-1.png)<!-- -->
 
+\#———————————————- \# ANI and Turnover Rate / strain
 
+can we calculate a CRISPR turnover rate? this would be like \#SNPs/per
+CRISPR spacer or every xx number of SNPs 1 new CRISPR spacer.
 
+what you would need is: 1. translate ANI to SNV distance between two
+genomes (do this from the fastANI output: column 4 in output is the
+number of 1000bp windows that were compared. –&gt; multiple this bp
+length with the invert of the ANI to get the basepair difference between
+the two genomes). 2. translate the % of shared spacers into a number of
+shared spacers
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#----------------------------------------------
-# ANI and Turnover Rate / strain
-
-can we calculate a CRISPR turnover rate?
-this would be like #SNPs/per CRISPR spacer or every xx number of SNPs 1 new CRISPR spacer.
-
-what you would need is:
-1. translate ANI to SNV distance between two genomes (do this from the fastANI output: 
-  column 4 in output is the number of 1000bp windows that were compared. 
-      --> multiple this bp length with the invert of the ANI to get the basepair difference between the two genomes). 
-2. translate the % of shared spacers into a number of shared spacers
-
-```{r, eval=FALSE}
-
-
+``` r
 ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
 
 # # Function to get 
@@ -3070,10 +3695,9 @@ ANI_Shared_custom_strain <- ANI_Shared_custom_strain_raw %>% unnest(scores) %>% 
 ANI_Shared_custom_strain %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_custom_strain.csv", sep=""))
 ```
 
-
 # ANI custom turnover / array
 
-```{r}
+``` r
 #install.packages("seqRFLP",  lib="/data/projects/p539_crisprscope/RPACKAGES", repos='http://cran.us.r-project.org')
 #install.packages("dplyr",  lib="/data/projects/p539_crisprscope/RPACKAGES", repos='http://cran.us.r-project.org')
 
@@ -3100,16 +3724,24 @@ ANI_Shared_custom_strain %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT
 #   mutate(str_typ = paste(Strain, Array, Cas_subtype, sep="_")) %>% 
 #   select(Organism, Strain, str_typ, cluster_spacer_identity) %>% 
 #   write_csv(file = paste(data_folder, "/EXPORT/tmp_compute.csv", sep=""))
-
-
 ```
 
-
-```{r}
-
+``` r
 tmp_compute <- read_csv(file = paste(data_folder, "/EXPORT/tmp_compute.csv", sep=""))
+```
 
+    ## Rows: 50955 Columns: 4
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (3): Organism, Strain, str_typ
+    ## dbl (1): cluster_spacer_identity
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 score_fct <- function(str_typ1str, str_typ2str){
   
   print(paste("seq1: ", str_typ1str, " /  seq2: ", str_typ2str, sep=""))
@@ -3152,7 +3784,19 @@ str_typ %>%
   write_csv(file = paste(data_folder, "/EXPORT/tmp_str_typ.csv", sep=""))
 
 str_typ <- read_csv(file = paste(data_folder, "/EXPORT/tmp_str_typ.csv", sep=""))
+```
 
+    ## Rows: 1781 Columns: 2
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (2): Strain, str_typ
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 ANI_merged_filtered_custom_type <- ANI_merged_filtered %>% 
   left_join(str_typ, by = c("strain_query"="Strain")) %>% 
   dplyr::rename(str_typ_1 = str_typ) %>% 
@@ -3168,7 +3812,60 @@ ANI_merged_filtered_custom_type <- ANI_merged_filtered %>%
 #- High Load
 ANI_Shared_custom_raw1 <- ANI_merged_filtered_custom_type %>% 
   mutate(scores = future_map2(str_typ_1, str_typ_2, score_fct))
+```
 
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000172535.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003428375.1_5_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000092765.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000695895.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000817045.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000277345.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.902387355.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000277325.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000220885.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000240765.1_4_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000025245.2_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.016835115.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.016835135.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000022705.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003390755.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003438565.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.009834975.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000818055.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.008041995.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003095015.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000224965.2_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.015377505.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.008868455.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003094895.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003438945.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.006538245.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003095115.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.002914895.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154525.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.900157045.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.000414215.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.006538265.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.009077835.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003094875.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.009075825.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.009075805.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.900157135.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.002914815.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154435.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003095055.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154545.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154445.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004167905.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.003095075.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154695.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.011770105.1_3_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154565.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154655.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.004154535.1_1_I-G"
+    ## [1] "seq1: GCF.000021425.1_3_I-G /  seq2: GCF.006538285.1_1_I-G"
+
+``` r
 # Extract scores and compute turnover and diversity
 ANI_Shared_custom_raw2 <- ANI_Shared_custom_raw1 %>% unnest(scores) %>% mutate(scores = unlist(scores)) %>%
   group_by(species_query, strain_query, species_ref, 
@@ -3183,33 +3880,57 @@ ANI_Shared_custom_raw2 <- ANI_Shared_custom_raw1 %>% unnest(scores) %>% mutate(s
   mutate(perc_shared = perc_shared * 100) %>% 
   mutate(nucleotide_diversity = (bidirectional_fragment_mapping * 1000)*(1/ANI)) %>% 
   mutate(turnover_rate = nucleotide_diversity/unique_sp)
-  
-  ANI_Shared_custom_raw2 %>% write_csv(file = "./ANI_CUSTOM_OUTPUT_21072021.csv")
-
 ```
+
+    ## `summarise()` has grouped output by 'species_query', 'strain_query', 'species_ref', 'strain_ref', 'ANI', 'bidirectional_fragment_mapping', 'total_query_fragment', 'str_typ_1', 'str_typ_2'. You can override using the `.groups` argument.
+
+``` r
+  ANI_Shared_custom_raw2 %>% write_csv(file = "./ANI_CUSTOM_OUTPUT_21072021.csv")
+```
+
 TBR
-```{r}
+
+``` r
 CRISPRscope_tbl_26 %>% filter(Strain == "GCF.004154455.1") %>% select(Organism, Strain, Array, DR_seq, cluster_spacer_identity) %>% group_by(Array) %>% 
   summarise(Organism, Strain, Array, DR_seq, n_distinct(cluster_spacer_identity)) %>% distinct()
-
-
-
 ```
+
+    ## `summarise()` has grouped output by 'Array'. You can override using the `.groups` argument.
+
+    ## # A tibble: 3 x 5
+    ## # Groups:   Array [3]
+    ##   Array Organism         Strain     DR_seq            `n_distinct(cluster_space~
+    ##   <chr> <chr>            <chr>      <chr>                                  <int>
+    ## 1 1     Bifidobacterium~ GCF.00415~ GGGATCATCCCCGCGC~                         28
+    ## 2 2     Bifidobacterium~ GCF.00415~ GGGATCATCCCCGCGC~                         31
+    ## 3 3     Bifidobacterium~ GCF.00415~ GGGATCATCCCCGCGC~                         47
 
 ## Results
 
-For each strain AND ARRAY, we have the ANI, the percentage of shared spacers but also: 
-  - The number of shared spacers between the two arrays, the number of unique spacers (in total, not shared)
-  - The Nucleotide diversity calculated as (bidirectional_fragment_mapping * 1000)*(1/ANI))
-  - The turnover rate calculated as nucleotide_diversity/unique_sp
+For each strain AND ARRAY, we have the ANI, the percentage of shared
+spacers but also: - The number of shared spacers between the two arrays,
+the number of unique spacers (in total, not shared) - The Nucleotide
+diversity calculated as (bidirectional\_fragment\_mapping \*
+1000)\*(1/ANI)) - The turnover rate calculated as
+nucleotide\_diversity/unique\_sp
 
-
-
-```{r}
+``` r
 ANI_CUSTOM_OUTPUT_21072021 <- read_csv("C:/Users/thsch/Desktop/0_data/IMPORT/ANI_CUSTOM_OUTPUT_21072021.csv") %>% 
   mutate(turnover_rate = as.double(turnover_rate))
 ```
-```{r}
+
+    ## Rows: 436790 Columns: 15
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (7): species_query, strain_query, species_ref, strain_ref, str_typ_1, st...
+    ## dbl (8): ANI, bidirectional_fragment_mapping, total_query_fragment, mean_not...
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 ANI_CUSTOM_PLOT_DATA <- ANI_CUSTOM_OUTPUT_21072021 %>% 
   select(species_query, ANI, perc_shared, unique_sp, nucleotide_diversity, turnover_rate)  %>% 
   left_join(species_colors, by=c("species_query" = "Species")) %>% 
@@ -3222,13 +3943,12 @@ ANI_CUSTOM_PLOT_DATA_2 <- ANI_CUSTOM_OUTPUT_21072021 %>%
   select(species_query, str_typ_1, str_typ_2, ANI, perc_shared, unique_sp, nucleotide_diversity, turnover_rate) %>% 
   separate(str_typ_1, into = c("Strain1", "Array1", "typ_1"),sep = "_", remove = T) %>% 
   separate(str_typ_2, into = c("Strain2", "Array2", "typ_2"),sep = "_", remove = T) 
-  
-  
 ```
 
-Within species / per array comparison: percentage of shared spacers vs ANI
+Within species / per array comparison: percentage of shared spacers vs
+ANI
 
-```{r, fig.height=8, fig.width=12}
+``` r
 cols <- as.character(ANI_CUSTOM_PLOT_DATA$col)
 names(cols) <- as.character(ANI_CUSTOM_PLOT_DATA$species_query)
 
@@ -3280,14 +4000,26 @@ ANI_CUSTOM_PLOT_1 <- ANI_CUSTOM_PLOT_DATA  %>%
 
 ANI_CUSTOM_PLOT_1 <-
   ggMarginal(ANI_CUSTOM_PLOT_1, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
-
-ANI_CUSTOM_PLOT_1
-
 ```
 
-Within species / per array comparison: nucleotide diversity vs turnover_rate
+    ## Warning: Ignoring unknown parameters: outlier.size
 
-```{r, fig.height=8, fig.width=12}
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+``` r
+ANI_CUSTOM_PLOT_1
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-76-1.png)<!-- -->
+
+Within species / per array comparison: nucleotide diversity vs
+turnover\_rate
+
+``` r
 cols <- as.character(ANI_CUSTOM_PLOT_DATA$col)
 names(cols) <- as.character(ANI_CUSTOM_PLOT_DATA$species_query)
 
@@ -3339,13 +4071,27 @@ ANI_CUSTOM_PLOT_2 <- ANI_CUSTOM_PLOT_DATA  %>%
 
 ANI_CUSTOM_PLOT_2 <-
   ggMarginal(ANI_CUSTOM_PLOT_2, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
-
-ANI_CUSTOM_PLOT_2
-
 ```
 
+    ## Warning: Ignoring unknown parameters: outlier.size
 
-```{r, fig.height=8, fig.width=12}
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Removed 3308 rows containing non-finite values (stat_density).
+
+    ## Warning: Removed 3308 rows containing non-finite values (stat_density).
+
+``` r
+ANI_CUSTOM_PLOT_2
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-77-1.png)<!-- -->
+
+``` r
 cols <- as.character(ANI_CUSTOM_PLOT_DATA$col)
 names(cols) <- as.character(ANI_CUSTOM_PLOT_DATA$species_query)
 
@@ -3397,21 +4143,36 @@ ANI_CUSTOM_PLOT_3 <- ANI_CUSTOM_PLOT_DATA  %>%
 
 ANI_CUSTOM_PLOT_3 <-
   ggMarginal(ANI_CUSTOM_PLOT_3, xparams = list(size=.2, outlier.size=.1), yparams = list(size=.2, outlier.size=.1))
-
-ANI_CUSTOM_PLOT_3
-
 ```
 
+    ## Warning: Ignoring unknown parameters: outlier.size
 
-#----------------------------------------------
+    ## Warning: Ignoring unknown parameters: outlier.size
 
+    ## Warning: Ignoring unknown parameters: outlier.size
 
+    ## Warning: Ignoring unknown parameters: outlier.size
+
+    ## Warning: Removed 3308 rows containing non-finite values (stat_density).
+
+    ## Warning: Removed 3308 rows containing non-finite values (stat_density).
+
+``` r
+ANI_CUSTOM_PLOT_3
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-78-1.png)<!-- -->
+
+\#———————————————-
 
 # Repeat and spacers cluster species comparison
 
+\#\#
+<p>
 
-##<p> nb repeats
-```{r fig.height=8, fig.width=4}
+nb repeats
+
+``` r
 # colors
 colors_tmp <- species_colors %>% mutate(Organism = Species) %>% select(-Species) %>% gather(Organism, color) %>% unique()
 
@@ -3422,8 +4183,11 @@ plt_nb_repeat <- CRISPRscope_tbl_26 %>% select(Organism, Strain, DR_seq, cluster
   group_by(Strain) %>% 
   summarise(Organism = Organism, Strain = Strain, Count = n_distinct(cluster_repeat_identity)) %>% distinct() %>% 
   left_join(colors_tmp, by = "Organism")
+```
 
+    ## `summarise()` has grouped output by 'Strain'. You can override using the `.groups` argument.
 
+``` r
 cols <- as.character(plt_nb_repeat$color)
 names(cols) <- as.character(plt_nb_repeat$Organism)
 
@@ -3433,7 +4197,20 @@ plt_nb_repeat$Organism = factor(plt_nb_repeat$Organism, levels = species_levels_
 plt_nb_repeat %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/plt_nb_repeat.csv", sep=""), row.names=FALSE)
 
 plt_nb_repeat = read_csv(file  = paste(data_folder, "/IMPORT_EXPORT/plt_nb_repeat.csv", sep=""))
+```
 
+    ## Rows: 1195 Columns: 4
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (3): Strain, Organism, color
+    ## dbl (1): Count
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 plt_nb_repeat %>% 
   ggplot(aes(x=Count, y=Organism, label = Organism)) +
   geom_boxplot(aes(fill = Organism)) + 
@@ -3478,17 +4255,16 @@ plt_nb_repeat %>%
   ) +
   ylab("") +
   xlab("Repeat count per strain")
-
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-79-1.png)<!-- -->
 
+\#\#
+<p>
 
-## <p> nb ARRAYS per species-strain
+nb ARRAYS per species-strain
 
-
-
-```{r fig.height=8, fig.width=4}
+``` r
 # colors
 colors_tmp <- species_colors %>% mutate(Organism = Species) %>% select(-Species) %>% gather(Organism, color) %>% unique()
 
@@ -3500,8 +4276,11 @@ plt_nb_array <- CRISPRscope_tbl_26 %>% select(Organism, Strain, ArrayID) %>%
   group_by(Strain) %>% 
   summarise(Organism = Organism, Strain = Strain, Count = n()) %>% distinct() %>% 
   left_join(colors_tmp, by = "Organism")
+```
 
+    ## `summarise()` has grouped output by 'Strain'. You can override using the `.groups` argument.
 
+``` r
 cols <- as.character(plt_nb_array$color)
 names(cols) <- as.character(plt_nb_array$Organism)
 
@@ -3511,7 +4290,20 @@ plt_nb_array$Organism = factor(plt_nb_array$Organism, levels = species_levels_21
 plt_nb_array %>% write.csv(file = paste(data_folder, "/IMPORT_EXPORT/plt_nb_array.csv", sep=""), row.names=FALSE)
 
 plt_nb_array = read_csv(file = paste(data_folder, "/IMPORT_EXPORT/plt_nb_array.csv", sep=""))
+```
 
+    ## Rows: 1195 Columns: 4
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (3): Strain, Organism, color
+    ## dbl (1): Count
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 plt_nb_array %>% 
   ggplot(aes(x=Count, y=Organism, label = Organism)) +
   geom_boxplot(aes(fill = Organism)) + 
@@ -3556,24 +4348,19 @@ plt_nb_array %>%
   ) +
   ylab("") +
   xlab("Array count per strain")
-
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-80-1.png)<!-- -->
 
-
-
-
-#----------------------------------------------
+\#———————————————-
 
 # Repeat clusters
 
-
 Show that repeats are strain specific with the clustering
 
+\#<stat> Repeats cluster 100%
 
-#<stat> Repeats cluster 100%
-```{r fig.height=8, fig.width=19}
+``` r
 # Stats about how clusters are shared. 
 DR_clst_stats <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_repeat_identity) %>% 
   distinct() %>% 
@@ -3584,14 +4371,40 @@ DR_clst_stats <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_repeat_
   ungroup() %>% 
   select(-Organism) %>% 
   dplyr::count(cluster_repeat_identity) 
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+``` r
 #-----100%id
 # Number of repeats shared: 3
 DR_clst_stats %>% filter(n>1)
+```
+
+    ## # A tibble: 3 x 2
+    ##   cluster_repeat_identity     n
+    ##                     <dbl> <int>
+    ## 1                     108     2
+    ## 2                     173     3
+    ## 3                     207     2
+
+``` r
 # Number of repeats: 112
 DR_clst_stats %>% summarise(ndist = n_distinct(cluster_repeat_identity))
-3/112
+```
 
+    ## # A tibble: 1 x 1
+    ##   ndist
+    ##   <int>
+    ## 1   112
+
+``` r
+3/112
+```
+
+    ## [1] 0.02678571
+
+``` r
 #----- 80% id
 DR_clst_stats80 <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_repeat) %>% 
   distinct() %>% 
@@ -3602,17 +4415,62 @@ DR_clst_stats80 <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_repea
   ungroup() %>% 
   select(-Organism) %>% 
   dplyr::count(cluster_repeat) 
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+``` r
 # Number of repeats shared: 14
 DR_clst_stats80 %>% filter(n>1)
+```
+
+    ## # A tibble: 14 x 2
+    ##    cluster_repeat     n
+    ##             <dbl> <int>
+    ##  1             14     2
+    ##  2             15     2
+    ##  3             22     2
+    ##  4             25     5
+    ##  5             28     2
+    ##  6             55     4
+    ##  7             63     2
+    ##  8             73     3
+    ##  9             83     2
+    ## 10             96     2
+    ## 11            100     3
+    ## 12            103     2
+    ## 13            108     4
+    ## 14            124     2
+
+``` r
 # Number of repeats: 40
 DR_clst_stats80 %>% summarise(ndist = n_distinct(cluster_repeat))
+```
+
+    ## # A tibble: 1 x 1
+    ##   ndist
+    ##   <int>
+    ## 1    40
+
+``` r
 14/40
+```
 
+    ## [1] 0.35
 
+``` r
 mean(DR_clst_stats$n)
-sd(DR_clst_stats$n)
+```
 
+    ## [1] 1.035714
+
+``` r
+sd(DR_clst_stats$n)
+```
+
+    ## [1] 0.2297108
+
+``` r
 # Repeat clusters are present in average in 1.52 Organisms with a SD of 0.94
 
 
@@ -3627,8 +4485,24 @@ cls_tmp <- CRISPRscope_tbl_26 %>% select(Cas_subtype, cluster_repeat_identity) %
 
 # There is only one subtype per cluster -> we can put the cas-subtype for the x axis
 cls_tmp %>% dplyr::count(cluster_repeat_identity)
+```
 
+    ## # A tibble: 112 x 2
+    ##    cluster_repeat_identity     n
+    ##                      <dbl> <int>
+    ##  1                      81     1
+    ##  2                      97     1
+    ##  3                     102     1
+    ##  4                     106     1
+    ##  5                     108     1
+    ##  6                     112     1
+    ##  7                     115     1
+    ##  8                     119     1
+    ##  9                     135     1
+    ## 10                     138     2
+    ## # ... with 102 more rows
 
+``` r
 # Goal1 : x axis with II-A - repeat 1 , II-A repeat 2
 # Goal2: add  abundance. So (number of repeats in that species) / (number of genomes in that species species
 
@@ -3637,15 +4511,11 @@ abdc <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_repeat_identity,
   group_by(Organism) %>% # add nb genomes
   mutate(total_genomes = n_distinct(Strain)) %>% 
   ungroup() %>% select(Organism, total_genomes) %>%  distinct()
-
-
-
 ```
 
-## Tileplot clusterx 100 
+## Tileplot clusterx 100
 
-```{r}
-
+``` r
 cluster_id <- CRISPRscope_tbl_26 %>% select(Organism, cluster_repeat_identity, Cas_subtype) %>% 
   distinct() %>% 
   arrange(Organism) %>% 
@@ -3676,6 +4546,25 @@ preplot_dr_cluster$Organism = factor(preplot_dr_cluster$Organism, levels = speci
 preplot_dr_cluster <- preplot_dr_cluster %>% arrange(desc(Organism)) %>% mutate(Organism_formated = gsub("_", " ", Organism))
 
 preplot_dr_cluster
+```
+
+    ## # A tibble: 1,885 x 10
+    ##    Organism    Strain  cluster_repeat_~ Cas_subtype species_type cls_type n_tile
+    ##    <fct>       <chr>              <dbl> <chr>       <chr>        <chr>     <int>
+    ##  1 Corynebact~ GCF.00~              574 I-E         generalist   I-E - r~      2
+    ##  2 Corynebact~ GCF.00~              462 I-E         generalist   I-E - r~      3
+    ##  3 Corynebact~ GCF.01~              462 I-E         generalist   I-E - r~      3
+    ##  4 Corynebact~ GCF.00~              574 I-E         generalist   I-E - r~      2
+    ##  5 Corynebact~ GCF.00~              498 I-E         generalist   I-E - r~      2
+    ##  6 Corynebact~ FAM245~              498 I-E         generalist   I-E - r~      2
+    ##  7 Corynebact~ FAM245~              462 I-E         generalist   I-E - r~      3
+    ##  8 Propioniba~ GCF.90~              274 I-G         mesophilic   I-G - r~     71
+    ##  9 Propioniba~ GCF.90~              804 I-G         mesophilic   I-G - r~      1
+    ## 10 Propioniba~ GCF.00~              274 I-G         mesophilic   I-G - r~     71
+    ## # ... with 1,875 more rows, and 3 more variables: n_repeat <int>, ratio <dbl>,
+    ## #   Organism_formated <chr>
+
+``` r
 #main <- preplot_dr_cluster %>% arrange(Organism) %>% select(cls_type) %>% distinct()
 
 clst_lst_order = c()
@@ -3700,15 +4589,72 @@ for(i in 1:(length(species_levels_21))){
 }
 
 print(clst_lst_order)
-
-preplot_dr_cluster_x <- preplot_dr_cluster %>% mutate(cls_type = factor(cls_type, levels = clst_lst_order))
-
 ```
 
-```{r fig.height=8, fig.width=20}
+    ##   [1] "I-C - repeat 6"    "I-E - repeat 22"   "I-B - repeat 1"   
+    ##   [4] "I-E - repeat 23"   "I-E - repeat 24"   "I-C - repeat 7"   
+    ##   [7] "I-E - repeat 25"   "I-E - repeat 26"   "II-A - repeat 14" 
+    ##  [10] "I-B - repeat 2"    "I-B - repeat 3"    "I-E - repeat 27"  
+    ##  [13] "I-E - repeat 18"   "I-E - repeat 19"   "I-E - repeat 20"  
+    ##  [16] "II-A - repeat 12"  "I-C - repeat 5"    "I-E - repeat 21"  
+    ##  [19] "III-A - repeat 1"  "III-A - repeat 2"  "II-A - repeat 13" 
+    ##  [22] "II-A - repeat 6"   "II-A - repeat 7"   "II-A - repeat 3"  
+    ##  [25] "I-C - repeat 2"    "I-C - repeat 3"    "II-A - repeat 1"  
+    ##  [28] "II-A - repeat 2"   "II-A - repeat 4"   "I-C - repeat 4"   
+    ##  [31] "II-A - repeat 5"   "II-A - repeat 15"  "I-E - repeat 28"  
+    ##  [34] "I-E - repeat 29"   "I-E - repeat 30"   "I-E - repeat 31"  
+    ##  [37] "I-E - repeat 32"   "II-A - repeat 20"  "II-C - repeat 1"  
+    ##  [40] "I-E - repeat 35"   "I-C - repeat 11"   "II-A - repeat 17" 
+    ##  [43] "II-A - repeat 16"  "I-E - repeat 33"   "III-A - repeat 3" 
+    ##  [46] "II-A - repeat 18"  "II-A - repeat 19"  "I-C - repeat 8"   
+    ##  [49] "I-C - repeat 9"    "I-E - repeat 34"   "I-C - repeat 10"  
+    ##  [52] "III-A - repeat 4"  "III-A - repeat 5"  "II-A - repeat 26" 
+    ##  [55] "II-A - repeat 27"  "II-A - repeat 25"  "I-C - repeat 12"  
+    ##  [58] "II-A - repeat 8"   "I-E - repeat 10"   "I-E - repeat 11"  
+    ##  [61] "I-E - repeat 12"   "II-A - repeat 9"   "II-A - repeat 10" 
+    ##  [64] "I-E - repeat 13"   "I-E - repeat 14"   "I-E - repeat 15"  
+    ##  [67] "II-A - repeat 11"  "I-E - repeat 16"   "I-E - repeat 17"  
+    ##  [70] "II-A - repeat 28"  "II-A - repeat 29"  "II-A - repeat 30" 
+    ##  [73] "II-C - repeat 2"   "II-A - repeat 31"  "II-A - repeat 32" 
+    ##  [76] "III-A - repeat 10" "III-A - repeat 11" "I-E - repeat 38"  
+    ##  [79] "II-C - repeat 3"   "II-A - repeat 33"  "II-A - repeat 34" 
+    ##  [82] "III-A - repeat 12" "II-C - repeat 4"   "III-A - repeat 13"
+    ##  [85] "II-A - repeat 21"  "III-B - repeat 1"  "II-A - repeat 22" 
+    ##  [88] "III-A - repeat 6"  "I-B - repeat 4"    "III-A - repeat 7" 
+    ##  [91] "II-A - repeat 23"  "II-A - repeat 24"  "III-A - repeat 8" 
+    ##  [94] "III-A - repeat 9"  "I-G - repeat 1"    "I-E - repeat 1"   
+    ##  [97] "I-C - repeat 1"    "I-E - repeat 2"    "I-E - repeat 3"   
+    ## [100] "I-E - repeat 4"    "I-E - repeat 5"    "I-E - repeat 9"   
+    ## [103] "I-G - repeat 2"    "I-G - repeat 3"    "I-G - repeat 4"   
+    ## [106] "I-E - repeat 36"   "I-G - repeat 5"    "I-G - repeat 6"   
+    ## [109] "I-E - repeat 37"   "I-G - repeat 7"    "I-E - repeat 6"   
+    ## [112] "I-E - repeat 7"    "I-E - repeat 8"
 
+``` r
+preplot_dr_cluster_x <- preplot_dr_cluster %>% mutate(cls_type = factor(cls_type, levels = clst_lst_order))
+```
+
+``` r
 preplot_dr_cluster_x
+```
 
+    ## # A tibble: 1,885 x 10
+    ##    Organism    Strain  cluster_repeat_~ Cas_subtype species_type cls_type n_tile
+    ##    <fct>       <chr>              <dbl> <chr>       <chr>        <fct>     <int>
+    ##  1 Corynebact~ GCF.00~              574 I-E         generalist   I-E - r~      2
+    ##  2 Corynebact~ GCF.00~              462 I-E         generalist   I-E - r~      3
+    ##  3 Corynebact~ GCF.01~              462 I-E         generalist   I-E - r~      3
+    ##  4 Corynebact~ GCF.00~              574 I-E         generalist   I-E - r~      2
+    ##  5 Corynebact~ GCF.00~              498 I-E         generalist   I-E - r~      2
+    ##  6 Corynebact~ FAM245~              498 I-E         generalist   I-E - r~      2
+    ##  7 Corynebact~ FAM245~              462 I-E         generalist   I-E - r~      3
+    ##  8 Propioniba~ GCF.90~              274 I-G         mesophilic   I-G - r~     71
+    ##  9 Propioniba~ GCF.90~              804 I-G         mesophilic   I-G - r~      1
+    ## 10 Propioniba~ GCF.00~              274 I-G         mesophilic   I-G - r~     71
+    ## # ... with 1,875 more rows, and 3 more variables: n_repeat <int>, ratio <dbl>,
+    ## #   Organism_formated <chr>
+
+``` r
 plot_dr_cluster_x <- preplot_dr_cluster_x %>% 
   #mutate(cls_type = as_factor(cls_type), Organism = factor(Organism, labels = species_levels_21)) %>%
   #mutate(Organism = gsub("_", " ", Organism)) %>% 
@@ -3757,10 +4703,11 @@ ggsave(
 plot_dr_cluster_x
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-83-1.png)<!-- -->
+
 ## Tileplot clusterx 80
 
-```{r}
-
+``` r
 cluster_id80 <- CRISPRscope_tbl_26 %>% select(Organism, cluster_repeat, Cas_subtype) %>% 
   distinct() %>% 
   arrange(Organism) %>% 
@@ -3800,11 +4747,25 @@ for(i in 1:(length(species_levels_21))){
 }
 
 print(clst_lst_order80)
+```
 
+    ##  [1] "I-C - repeat 1"   "I-E - repeat 8"   "I-B - repeat 1"   "II-A - repeat 5" 
+    ##  [5] "II-A - repeat 2"  "I-E - repeat 9"   "III-A - repeat 1" "II-A - repeat 4" 
+    ##  [9] "II-A - repeat 1"  "I-C - repeat 2"   "I-C - repeat 3"   "II-A - repeat 6" 
+    ## [13] "I-E - repeat 10"  "II-C - repeat 1"  "I-E - repeat 7"   "II-A - repeat 8" 
+    ## [17] "II-A - repeat 7"  "II-A - repeat 9"  "I-E - repeat 5"   "II-A - repeat 14"
+    ## [21] "II-A - repeat 3"  "I-E - repeat 6"   "I-E - repeat 4"   "II-A - repeat 15"
+    ## [25] "II-C - repeat 2"  "II-A - repeat 16" "III-A - repeat 5" "II-A - repeat 17"
+    ## [29] "II-A - repeat 10" "III-B - repeat 1" "III-A - repeat 3" "II-A - repeat 11"
+    ## [33] "III-A - repeat 2" "I-B - repeat 2"   "II-A - repeat 12" "II-A - repeat 13"
+    ## [37] "III-A - repeat 4" "I-G - repeat 1"   "I-E - repeat 1"   "I-E - repeat 2"  
+    ## [41] "I-G - repeat 2"   "I-E - repeat 3"
+
+``` r
 preplot_dr_cluster_y <- preplot_dr_cluster80 %>% mutate(cls_type = factor(cls_type, levels = clst_lst_order80))
 ```
 
-```{r fig.height=8, fig.width=20}
+``` r
 plot_dr_cluster_y <- preplot_dr_cluster_y %>% 
   #mutate(cls_type = as_factor(cls_type), Organism = factor(Organism, labels = species_levels_21)) %>%
   #mutate(Organism = gsub("_", " ", Organism)) %>% 
@@ -3853,10 +4814,11 @@ ggsave(
 plot_dr_cluster_y
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-85-1.png)<!-- -->
+
 ## cluster80 percentage identity.
 
-```{r fig.height=8, fig.width=12}
-
+``` r
 plot_repeat_identity_density <- CRISPRscope_tbl_26 %>% select(ArrayID, cluster_repeat, identity_repeat_cluster80) %>% 
   mutate(identity_repeat_cluster80 = abs(identity_repeat_cluster80)) %>% 
   mutate(identity_repeat_cluster80 = ifelse(identity_repeat_cluster80 == 1.00, 100, identity_repeat_cluster80)) %>% distinct() %>% 
@@ -3887,6 +4849,11 @@ plot_repeat_identity_density <- CRISPRscope_tbl_26 %>% select(ArrayID, cluster_r
   ylab("Density") 
 
 plot_repeat_identity_density
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-86-1.png)<!-- -->
+
+``` r
   ggsave(
   plot = plot_repeat_identity_density,
   file = paste(google_drive_folder, "/plot_repeat_identity_density.pdf", sep=""),
@@ -3898,12 +4865,12 @@ plot_repeat_identity_density
 )
 ```
 
+\#Spacers \#\#
+<p>
 
+Heatmap spacers
 
-#Spacers
-## <p> Heatmap spacers
-
-```{r fig.height=8, fig.width=22}
+``` r
 # summarize instead of select allows for nicely sorting
 
 plot_sp_cluster_order <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer, cluster_spacer_identity) %>% 
@@ -3913,9 +4880,11 @@ plot_sp_cluster_order <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster
   arrange(cluster_spacer) %>% 
   distinct() %>% 
   mutate(cluster_spacer = as_factor(cluster_spacer), Organism = as_factor(Organism), cluster_spacer_identity = as_factor(cluster_spacer_identity))
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
 
-
+``` r
 plot_ <- plot_sp_cluster_order %>% 
   mutate(Organism = gsub("_", " ", Organism)) %>% 
   ggplot() +
@@ -3967,14 +4936,16 @@ plot_ <- plot_sp_cluster_order %>%
 # )
 
 plot_
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-87-1.png)<!-- -->
 
+\#\#
+<p>
 
-## <p> Heatmap spacers 2
+Heatmap spacers 2
 
-```{r fig.height=8, fig.width=12}
+``` r
 # summarize instead of select allows for nicely sorting
 
 plot_sp_cluster_order <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>% 
@@ -3984,7 +4955,11 @@ plot_sp_cluster_order <- CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster
   arrange(cluster_spacer_identity) %>% 
   distinct() %>% 
   mutate(cluster_spacer_identity = as_factor(cluster_spacer_identity))
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+``` r
 plot_sp_cluster_order$Organism = factor(plot_sp_cluster_order$Organism, levels = species_levels_21)
 
 
@@ -4042,19 +5017,50 @@ plot_ <- plot_sp_cluster_order %>%
 plot_
 ```
 
-
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-88-1.png)<!-- -->
 
 # <stat> spacers numbers
 
-```{r}
-
+``` r
 # Number of spacers (100% ID)
 CRISPRscope_tbl_185 %>% select(cluster_spacer_identity) %>% distinct(cluster_spacer_identity) %>% arrange(cluster_spacer_identity) # 56,614 different
+```
+
+    ## # A tibble: 56,796 x 1
+    ##    cluster_spacer_identity
+    ##                      <dbl>
+    ##  1                      18
+    ##  2                      19
+    ##  3                      20
+    ##  4                      21
+    ##  5                      22
+    ##  6                      23
+    ##  7                      24
+    ##  8                      25
+    ##  9                      26
+    ## 10                      27
+    ## # ... with 56,786 more rows
+
+``` r
 CRISPRscope_tbl_26 %>% select(cluster_spacer_identity) %>% distinct(cluster_spacer_identity) %>% arrange(cluster_spacer_identity) # 16,332 different 
+```
 
+    ## # A tibble: 16,506 x 1
+    ##    cluster_spacer_identity
+    ##                      <dbl>
+    ##  1                      19
+    ##  2                      20
+    ##  3                      21
+    ##  4                      22
+    ##  5                      23
+    ##  6                      24
+    ##  7                      25
+    ##  8                      27
+    ##  9                      28
+    ## 10                      29
+    ## # ... with 16,496 more rows
 
-
-
+``` r
 #Unique spacers
 
 cluster_count <- CRISPRscope_tbl_26 %>% 
@@ -4064,20 +5070,93 @@ cluster_count <- CRISPRscope_tbl_26 %>%
   arrange(desc(n))
 
 cluster_count
+```
+
+    ## # A tibble: 16,506 x 2
+    ##    cluster_spacer_identity     n
+    ##                      <dbl> <int>
+    ##  1                   15147   143
+    ##  2                   20119   139
+    ##  3                   20018   133
+    ##  4                   11694   129
+    ##  5                   11686   121
+    ##  6                    9787   117
+    ##  7                   15149   116
+    ##  8                   15151   115
+    ##  9                   15148   114
+    ## 10                   11687   111
+    ## # ... with 16,496 more rows
+
+``` r
 min(cluster_count$n)
+```
+
+    ## [1] 1
+
+``` r
 max(cluster_count$n)
+```
+
+    ## [1] 143
+
+``` r
 mean(cluster_count$n)
+```
+
+    ## [1] 2.796498
+
+``` r
 sd(cluster_count$n)
+```
+
+    ## [1] 7.38253
+
+``` r
 cluster_count %>% filter(n > 1) # 6,401
+```
 
+    ## # A tibble: 6,406 x 2
+    ##    cluster_spacer_identity     n
+    ##                      <dbl> <int>
+    ##  1                   15147   143
+    ##  2                   20119   139
+    ##  3                   20018   133
+    ##  4                   11694   129
+    ##  5                   11686   121
+    ##  6                    9787   117
+    ##  7                   15149   116
+    ##  8                   15151   115
+    ##  9                   15148   114
+    ## 10                   11687   111
+    ## # ... with 6,396 more rows
+
+``` r
 cluster_count %>% filter(n == 1) # 9,931
+```
 
+    ## # A tibble: 10,100 x 2
+    ##    cluster_spacer_identity     n
+    ##                      <dbl> <int>
+    ##  1                      20     1
+    ##  2                      21     1
+    ##  3                      22     1
+    ##  4                      23     1
+    ##  5                      24     1
+    ##  6                      25     1
+    ##  7                      28     1
+    ##  8                      29     1
+    ##  9                      30     1
+    ## 10                      31     1
+    ## # ... with 10,090 more rows
+
+``` r
 # percentage of unique spacers
 6401 / (6401 + 9931) # 0.39193 of the spacers are unique
+```
 
+    ## [1] 0.39193
 
-
-
+``` r
 # Proportion of spacers shared between species
 
 prop_shared <- CRISPRscope_tbl_26 %>% 
@@ -4087,24 +5166,26 @@ prop_shared <- CRISPRscope_tbl_26 %>%
 
 # 16332 rows in total
 prop_shared %>% filter(n>1) # 64 rows
+```
 
+    ## # A tibble: 0 x 2
+    ## # ... with 2 variables: cluster_spacer_identity <dbl>, n <int>
 
-
-
+``` r
 # Spacers shared between Lb Delbrueckii and helveticus 
 CRISPRscope_tbl_26 %>% 
   filter(Organism == "Lactobacillus_delbrueckii" | Organism == "Lactobacillus_helveticus") %>% 
   select(Organism, cluster_spacer_identity) %>% 
   distinct() %>% 
   dplyr::count(cluster_spacer_identity) %>% filter(n>1) # 64 rows -> 0 rows after quality filtering
-
 ```
 
+    ## # A tibble: 0 x 2
+    ## # ... with 2 variables: cluster_spacer_identity <dbl>, n <int>
 
-#<stat> shared spacers
-Showed contamination (next chunk) 
-```{r}
+\#<stat> shared spacers Showed contamination (next chunk)
 
+``` r
 # TODO check the difference of shared spacers between arrays, strains and species. While spacers will rarely be shared between species or strains, they can be present more than once in an array. 
 
 # TODO: Per organism, how many spacers are present in one or more strain
@@ -4116,9 +5197,13 @@ Showed contamination (next chunk)
 
 # HEre we see that spacers (cluster) can be present multiple times, even in the same organism. 
 CRISPRscope_tbl_26 %>% select(Organism, Strain, Spacer, cluster_spacer_identity)  %>% filter(cluster_spacer_identity == 18)
+```
 
+    ## # A tibble: 0 x 4
+    ## # ... with 4 variables: Organism <chr>, Strain <chr>, Spacer <dbl>,
+    ## #   cluster_spacer_identity <dbl>
 
-
+``` r
 CRISPRscope_tbl_26 %>% select(Organism, cluster_spacer_identity) %>% 
   distinct() %>% # cluster present at least once in an organism 
   group_by(Organism) %>% 
@@ -4126,7 +5211,27 @@ CRISPRscope_tbl_26 %>% select(Organism, cluster_spacer_identity) %>%
   arrange(cluster_spacer_identity) %>% 
   distinct() %>% 
   mutate(cluster_spacer_identity = as_factor(cluster_spacer_identity), Organism = as_factor(Organism))
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+    ## # A tibble: 16,506 x 2
+    ## # Groups:   Organism [21]
+    ##    Organism                         cluster_spacer_identity
+    ##    <fct>                            <fct>                  
+    ##  1 Lactobacillus_delbrueckii        19                     
+    ##  2 Lactobacillus_helveticus         20                     
+    ##  3 Mammaliicoccus_sciuri            21                     
+    ##  4 Mammaliicoccus_sciuri            22                     
+    ##  5 Mammaliicoccus_sciuri            23                     
+    ##  6 Mammaliicoccus_sciuri            24                     
+    ##  7 Mammaliicoccus_sciuri            25                     
+    ##  8 Propionibacterium_freudenreichii 27                     
+    ##  9 Propionibacterium_freudenreichii 28                     
+    ## 10 Propionibacterium_freudenreichii 29                     
+    ## # ... with 16,496 more rows
+
+``` r
 # Without the distinct, the total number of rows is 50,794. 
 # We have 16,332 different spacers in total, meaning that a lot of them are present multiple time. 
 
@@ -4135,7 +5240,27 @@ CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>%
   summarise(Organism, Strain, cluster_spacer_identity) %>% 
   arrange(cluster_spacer_identity) %>% 
   mutate(cluster_spacer_identity = as_factor(cluster_spacer_identity), Organism = as_factor(Organism))
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+    ## # A tibble: 50,955 x 3
+    ## # Groups:   Organism [21]
+    ##    Organism                         Strain          cluster_spacer_identity
+    ##    <fct>                            <chr>           <fct>                  
+    ##  1 Lactobacillus_delbrueckii        GCF.002000885.1 19                     
+    ##  2 Lactobacillus_delbrueckii        GCF.002000885.1 19                     
+    ##  3 Lactobacillus_helveticus         GCF.017154195.1 20                     
+    ##  4 Mammaliicoccus_sciuri            GCF.009830405.1 21                     
+    ##  5 Mammaliicoccus_sciuri            GCF.009830405.1 22                     
+    ##  6 Mammaliicoccus_sciuri            GCF.009830405.1 23                     
+    ##  7 Mammaliicoccus_sciuri            GCF.009830405.1 24                     
+    ##  8 Mammaliicoccus_sciuri            GCF.017028935.1 25                     
+    ##  9 Propionibacterium_freudenreichii GCF.900000075.1 27                     
+    ## 10 Propionibacterium_freudenreichii GCF.001368955.1 27                     
+    ## # ... with 50,945 more rows
+
+``` r
 # With the distinct we have 45'016 spacers. meaning 
 CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>% 
   group_by(Organism) %>% 
@@ -4143,14 +5268,33 @@ CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>%
   arrange(cluster_spacer_identity) %>% 
   distinct() %>% 
   mutate(cluster_spacer_identity = as_factor(cluster_spacer_identity), Organism = as_factor(Organism))
-
 ```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
 
-## Contamination -> Helveticus and Delbrueckii shared spacers
-SOLVED -> we discovered that these two species had so many shared spacers because of contamination. Thus, the incriminated strains have been removed in "aditional quality filtering"
+    ## # A tibble: 44,897 x 3
+    ## # Groups:   Organism [21]
+    ##    Organism                         Strain          cluster_spacer_identity
+    ##    <fct>                            <chr>           <fct>                  
+    ##  1 Lactobacillus_delbrueckii        GCF.002000885.1 19                     
+    ##  2 Lactobacillus_helveticus         GCF.017154195.1 20                     
+    ##  3 Mammaliicoccus_sciuri            GCF.009830405.1 21                     
+    ##  4 Mammaliicoccus_sciuri            GCF.009830405.1 22                     
+    ##  5 Mammaliicoccus_sciuri            GCF.009830405.1 23                     
+    ##  6 Mammaliicoccus_sciuri            GCF.009830405.1 24                     
+    ##  7 Mammaliicoccus_sciuri            GCF.017028935.1 25                     
+    ##  8 Propionibacterium_freudenreichii GCF.900000075.1 27                     
+    ##  9 Propionibacterium_freudenreichii GCF.001368955.1 27                     
+    ## 10 Propionibacterium_freudenreichii GCF.900000075.1 28                     
+    ## # ... with 44,887 more rows
 
-```{r eval=FALSE}
+## Contamination -&gt; Helveticus and Delbrueckii shared spacers
+
+SOLVED -&gt; we discovered that these two species had so many shared
+spacers because of contamination. Thus, the incriminated strains have
+been removed in “aditional quality filtering”
+
+``` r
 Lhelv_g <- CRISPRscope_tbl_26 %>% filter(Organism == "Lactobacillus_helveticus") %>% 
   select(cluster_spacer_identity) %>% distinct() %>% unlist()#  %>% write.csv(file = "./OUTPUT/Vincent/Lhelv_scaffolds.csv", row.names=FALSE)
 
@@ -4168,22 +5312,32 @@ CRISPRscope_tbl_26 %>%
   filter(cluster_spacer_identity %in% list64_g) %>% 
   select(Organism, Strain, Scaffold) %>% distinct() %>% 
   write.csv(file = paste(data_folder, "/EXPORT/Lhelv_Ldelb_scaffolds.csv", row.names=FALSE)
-
 ```
 
-
-#-----------------------------
-# Shared clusters (Sp-dr)
-Show the shared spacers and repeats between species. 
-Count the number of shared spacers and plot it as a matrix.
+\#—————————– \# Shared clusters (Sp-dr) Show the shared spacers and
+repeats between species. Count the number of shared spacers and plot it
+as a matrix.
 
 ## Spacers heatmaps (80-100%)
-```{r, fig.width=12, fig.height=12}
+
+``` r
 library(corrr)
 library("scales")
 library(reshape2)
+```
 
+    ## 
+    ## Attachement du package : 'reshape2'
 
+    ## Les objets suivants sont masqués depuis 'package:reshape':
+    ## 
+    ##     colsplit, melt, recast
+
+    ## L'objet suivant est masqué depuis 'package:tidyr':
+    ## 
+    ##     smiths
+
+``` r
 a <- CRISPRscope_tbl_26 %>% 
   group_by(Organism) %>% 
   summarise(Spacer_cluster_100 = cluster_spacer_identity) %>% 
@@ -4196,7 +5350,11 @@ a <- CRISPRscope_tbl_26 %>%
   ungroup() %>% mutate(count=Spacer_cluster_100) %>% 
   spread_(key_col = "Organism", value_col = "count") %>% 
   select(-Spacer_cluster_100)
+```
 
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+``` r
 b <- CRISPRscope_tbl_26 %>% 
   group_by(Organism) %>% 
   summarise(Spacer_cluster_80 = cluster_spacer) %>% 
@@ -4209,7 +5367,13 @@ b <- CRISPRscope_tbl_26 %>%
   ungroup() %>% mutate(count=Spacer_cluster_80) %>% 
   spread_(key_col = "Organism", value_col = "count") %>% 
   select(-Spacer_cluster_80)
-  
+```
+
+    ## `summarise()` has grouped output by 'Organism'. You can override using the `.groups` argument.
+
+    ## `summarise()` has grouped output by 'Spacer_cluster_80'. You can override using the `.groups` argument.
+
+``` r
 # a[8] == a[9]
 # sum(!is.na(a[8] == a[9]))
 # sum(!is.na(a[7] == a[9]))
@@ -4240,7 +5404,19 @@ f80 <- function(x,y){
 
 species_combination.spacer_shared_100 <- species_combination %>% mutate(shared_spacer = map2_dbl(x,y,f100)) %>% 
   mutate_at(c("shared_spacer"), ~(rescale(., c(0,1)) %>% as.vector))   # scales between 0 and 1, keeps NA
+```
 
+    ## Note: Using an external vector in selections is ambiguous.
+    ## i Use `all_of(x)` instead of `x` to silence this message.
+    ## i See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
+    ## This message is displayed once per session.
+
+    ## Note: Using an external vector in selections is ambiguous.
+    ## i Use `all_of(y)` instead of `y` to silence this message.
+    ## i See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
+    ## This message is displayed once per session.
+
+``` r
 species_combination.spacer_shared_80 <- species_combination %>% mutate(shared_spacer = map2_dbl(x,y,f80)) %>% 
   mutate_at(c("shared_spacer"), ~(rescale(., c(0,1)) %>% as.vector))    # scales between 0 and 1, keeps NA
  # arrange(desc(x))
@@ -4249,10 +5425,7 @@ species_combination.spacer_shared_80 <- species_combination %>% mutate(shared_sp
 #   pivot_wider(names_from = y,values_from = shared_spacer)                 # Pivot the data to have a square
 ```
 
-
-```{r, fig.width=8, fig.height=8}
-
-
+``` r
 # Useless now we know that they don't share any thing (the contamination story)
 species_combination.spacer_shared_100 %>% 
   # mutate(x = factor(species_combination.spacer_shared_100$x, levels = species_levels_21)) %>% 
@@ -4305,11 +5478,11 @@ species_combination.spacer_shared_100 %>%
   ) +
   ylab("") +
   xlab("Shared spacers (100% identity clusters)")
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-93-1.png)<!-- -->
 
-
-
-
+``` r
 species_combination.spacer_shared_80 %>% ggplot(aes(x=x, y=y,fill=shared_spacer)) +
   geom_tile() + 
   theme_classic() + 
@@ -4358,26 +5531,37 @@ species_combination.spacer_shared_80 %>% ggplot(aes(x=x, y=y,fill=shared_spacer)
   ) +
   ylab("") +
   xlab("Shared spacers (80% identity clusters)")
-
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-93-2.png)<!-- -->
 
-
-
-
-#-----------------------------
-# Rhamnosus case <p>
+\#—————————– \# Rhamnosus case
+<p>
 
 ## Shared spacers colored by repeat.
 
-Shared spacers within one organism -> is shown by ANI and shared spacers but here we see it fine as well for an organsism separately
-```{r fig.height=15, fig.width=22}
+Shared spacers within one organism -&gt; is shown by ANI and shared
+spacers but here we see it fine as well for an organsism separately
+
+``` r
 # For lacticaseibacillus rhamnosus get sequences
 
 a <- CRISPRscope_tbl_26 %>% filter(Organism == "Lacticaseibacillus_rhamnosus") %>% select(DR_seq, cluster_repeat_identity) %>% distinct()
 a
+```
 
+    ## # A tibble: 7 x 2
+    ##   DR_seq                                cluster_repeat_identity
+    ##   <chr>                                                   <dbl>
+    ## 1 GTCTCAGGTAGATGTCAGATCAATCAGTTCAAGAGC                      170
+    ## 2 GTTCTTGAACTGATTGATCTGACATCTACCTGAGAC                      169
+    ## 3 GTCTCAGGTAGATGTCAGATCAATCAGTTCAAGAAC                      169
+    ## 4 GCTCTTGAACTGATTGATCTGACATCTACCTGAGAC                      170
+    ## 5 GGTCTCAGGTAGATGTCAGATCAATCAGTTCAAGAAC                     169
+    ## 6 GTCTCAGGTAGATGTCAGATCAATCAGTTCAAGAGCT                     170
+    ## 7 GCTCTTGAACTGATTGATTCGACATCTACCTGAGAC                      207
+
+``` r
 plot_sp_cluster_order <- CRISPRscope_tbl_26 %>% 
   filter(Organism == "Lacticaseibacillus_rhamnosus")  %>% select(Strain, cluster_spacer_identity, cluster_repeat_identity) %>% 
   distinct() %>% 
@@ -4386,9 +5570,11 @@ plot_sp_cluster_order <- CRISPRscope_tbl_26 %>%
   arrange(cluster_spacer_identity) %>% 
   distinct() %>% 
   mutate(cluster_spacer = as_factor(cluster_spacer_identity), Strain = as_factor(Strain), Repeat = as_factor(cluster_repeat_identity))
+```
 
+    ## `summarise()` has grouped output by 'Strain'. You can override using the `.groups` argument.
 
-
+``` r
 plot_ <- plot_sp_cluster_order %>% 
   ggplot(aes(x=cluster_spacer, y=Strain, fill=Repeat)) +
   geom_tile()+
@@ -4417,28 +5603,19 @@ plot_ <- plot_sp_cluster_order %>%
   ylab("") 
 
 plot_
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-94-1.png)<!-- -->
 
+\#———————————————- \# Topology of shared spacers Where spacers found in
+more than one strain
 
+0 = close to leader 1 = far from leader
 
+Attention: if only 2 spacers in the array, distances will be 0 and 1 if
+no direction is set, distance will be NA
 
-
-#----------------------------------------------
-# Topology of shared spacers
-Where spacers found in more than one strain
-
-0 = close to leader
-1 = far from leader
-
-
-Attention: 
-if only 2 spacers in the array, distances will be 0 and 1 
-if no direction is set, distance will be NA
-
-
-```{r  fig.height=9, fig.width=8}
+``` r
 cas_plot <- CRISPRscope_tbl_26 %>% 
   select(Organism, Strain, cluster_spacer_identity) %>% 
   distinct() %>% 
@@ -4492,7 +5669,11 @@ cas_plot <- CRISPRscope_tbl_26 %>%
   facet_wrap(~Cas_subtype)
 
 cas_plot
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-95-1.png)<!-- -->
+
+``` r
 wplot <- CRISPRscope_tbl_26 %>% 
   select(Organism, Strain, cluster_spacer_identity) %>% 
   distinct() %>% 
@@ -4545,7 +5726,11 @@ wplot <- CRISPRscope_tbl_26 %>%
 
 
 wplot
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-95-2.png)<!-- -->
+
+``` r
 ggsave(
   plot = wplot,
   file = paste(google_drive_folder,"/spacer_dist_leader_shared_notshared.pdf", sep = ""),
@@ -4565,31 +5750,56 @@ ggsave(
   units = "cm",
   dpi = 800
 )
-
-
-
 ```
 
-
-#----------------------------------------------
-# Orientation
+\#———————————————- \# Orientation
 
 Plor per-species orientation tendency
 
-```{r fig.height=9, fig.width=8}
+``` r
 orientation_stuff <- CRISPRscope_tbl_26 %>% group_by(ArrayID) %>% summarise(orientation = Orientation)%>% ungroup(ArrayID) %>% distinct() 
+```
+
+    ## `summarise()` has grouped output by 'ArrayID'. You can override using the `.groups` argument.
+
+``` r
 orientation_stuff <- orientation_stuff %>% mutate(orientation = factor(orientation_stuff$orientation, levels = c("+", "-", "ND")))
 orientation_stuff %>% dplyr::count(orientation) %>% mutate(total = sum(n), proportion = n/total)
+```
+
+    ## # A tibble: 3 x 4
+    ##   orientation     n total proportion
+    ##   <fct>       <int> <int>      <dbl>
+    ## 1 +             804  1972      0.408
+    ## 2 -             857  1972      0.435
+    ## 3 ND            311  1972      0.158
+
+``` r
 # total array 1975:  -> wierd as we have 1972 arrays
 #807(+) 0.4086076 %
 #857(-) 0.4339241 %
 #311(ND) 0.1574684 %
 
 CRISPRscope_tbl_26 %>% select(ArrayID, Orientation) %>% distinct() %>% count(Orientation)
+```
+
+    ## # A tibble: 3 x 2
+    ##   Orientation     n
+    ##   <chr>       <int>
+    ## 1 -             857
+    ## 2 +             804
+    ## 3 ND            311
+
+``` r
 CRISPRscope_tbl_26 %>% count()
+```
 
+    ## # A tibble: 1 x 1
+    ##       n
+    ##   <int>
+    ## 1 50955
 
-
+``` r
 orientation_organisme_plot <- CRISPRscope_tbl_26 %>% group_by(Organism) %>% select(Organism, ArrayID, Orientation) %>% distinct() %>% dplyr::count(Orientation) 
 orientation_organisme_plot$Organism = factor(orientation_organisme_plot$Organism, levels = species_levels_21)
   
@@ -4639,8 +5849,11 @@ plt_ori <- orientation_organisme_plot %>%
   xlab("")
 
 plt_ori
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-96-1.png)<!-- -->
 
+``` r
 ggsave(
   plot = plt_ori,
   file = paste(google_drive_folder,"/species_array_orientation.pdf", sep = ""),
@@ -4651,26 +5864,27 @@ ggsave(
   dpi = 800
 )
 ```
-```{r}
+
+``` r
 CRISPRscope_tbl_26 %>% group_by(Cas_subtype) %>% dplyr::count(Orientation) %>% 
   ggplot(aes(x=n, y=Cas_subtype, fill=Orientation)) +
   geom_bar(stat="identity") 
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-97-1.png)<!-- -->
 
-# ------------------------------
+# ——————————
+
 # Pairwise spacer comparison
 
-Compare pairwise 
+Compare pairwise
 
-Reverse complement: problem... we ignore this here for now. 
+Reverse complement: problem… we ignore this here for now.
 
-Take cluster representatives. 
-Align the two sequences
-Align the reverse complement of of one of the sequence (only one)
-take the best one. 
+Take cluster representatives. Align the two sequences Align the reverse
+complement of of one of the sequence (only one) take the best one.
 
-```{r eval=F}
+``` r
 #
 # Get all spacer cluster 100% id representative pairs and compute the best edit distance between seq-seq, and the complement / reverse complement
 # Input: output_file_name, test (bool)
@@ -4859,14 +6073,11 @@ for (slice in 1:total_slices) {
   print(paste("[R DEBUG]Slice: ", conveniant_loop_variable, " - Done", sep = ""))
   conveniant_loop_variable = conveniant_loop_variable + 1
 }
-
-
-
 ```
 
-
 Draft: final version on the cluster
-```{bash eval = F}
+
+``` bash
 #!/bin/bash
 #SBATCH --job-name=paircmp                           # create a short name for your job
 #SBATCH --partition=pall
@@ -4908,34 +6119,50 @@ end=`date +%s`
 runtime=$((end-start))
 
 echo "[DEBUG] Time: " ${runtime}
-
 ```
 
-
-
-
 ## Identical spacers
-As only the cluster representative are taken for the pairwise comparison (for optimisation reason mainly), we need to fill-in the 0 distance values.
 
+As only the cluster representative are taken for the pairwise comparison
+(for optimisation reason mainly), we need to fill-in the 0 distance
+values.
 
-```{r}
+``` r
 # Number of clusters with more than one spacers
 # 6448
 CRISPRscope_tbl_26 %>% select(cluster_spacer_identity) %>% 
   count(cluster_spacer_identity) %>% 
   filter(n > 1) %>% 
   select(cluster_spacer_identity)
+```
 
+    ## # A tibble: 6,648 x 1
+    ##    cluster_spacer_identity
+    ##                      <dbl>
+    ##  1                      19
+    ##  2                      27
+    ##  3                      58
+    ##  4                     125
+    ##  5                     134
+    ##  6                     202
+    ##  7                     244
+    ##  8                     336
+    ##  9                     365
+    ## 10                     426
+    ## # ... with 6,638 more rows
 
+``` r
 # Total number of spacers present more than once (sum of spacers from cluster of size > 1)
 # 41161
 sum(CRISPRscope_tbl_26 %>% 
       select(cluster_spacer_identity) %>% 
       count(cluster_spacer_identity) %>% 
       filter(n > 1) %>% select(n) %>% unlist())
+```
 
+    ## [1] 41097
 
-
+``` r
 # For each cluster, get the number of possible combination of pairwise comparison 
 
 #verif
@@ -4951,7 +6178,17 @@ summary(CRISPRscope_tbl_26 %>%
       select(cluster_spacer_identity) %>% 
       count(cluster_spacer_identity) %>% 
       filter(n > 1) %>% select(n) )
-  
+```
+
+    ##        n          
+    ##  Min.   :  2.000  
+    ##  1st Qu.:  2.000  
+    ##  Median :  3.000  
+    ##  Mean   :  6.182  
+    ##  3rd Qu.:  5.000  
+    ##  Max.   :177.000
+
+``` r
 # For each cluster, we get the number of possible pairwise combination. This is as many 0's edit distance.
 # 677078
 sum(CRISPRscope_tbl_26 %>% 
@@ -4961,37 +6198,59 @@ sum(CRISPRscope_tbl_26 %>%
       mutate(pairs = map2_dbl(n, 2, nb_comb)) %>%
       select(pairs) %>% 
       drop_na())
-
-
-
 ```
 
-
-
+    ## [1] 671071
 
 ## Results
 
 ### All merged data
 
-```{r}
+``` r
 # Edit distance between pairwaise comparison of all spacers
 sorted_results_1 <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results.csv", sep=""),
     col_names = c("count", "Editdistance")) %>%
   add_row(count = 677078, Editdistance = 0) %>% 
   arrange(Editdistance)
+```
 
+    ## Warning: `read_table2()` was deprecated in readr 2.0.0.
+    ## Please use `read_table()` instead.
+
+    ## 
+    ## -- Column specification --------------------------------------------------------
+    ## cols(
+    ##   count = col_double(),
+    ##   Editdistance = col_double()
+    ## )
+
+``` r
 # Raw file for sd and mean
 merged_slices <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices.csv", sep=""), 
     col_names = FALSE)
+```
 
+    ## Rows: 136215765 Columns: 1
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## dbl (1): X1
 
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 total_obs = sum(sorted_results_1$count)
 
 sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count)) +
   geom_col() + 
   scale_y_continuous(trans = "log10")
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-101-1.png)<!-- -->
+
+``` r
 #sorted_results_1 %>% mutate(replst = rep(Editdistance,count))
 
 mean_all <- mean(merged_slices$X1)
@@ -5000,16 +6259,16 @@ sd_all <- sd(merged_slices$X1)
 sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
   geom_col()  +
   stat_function(aes_(color="red"),fun = dnorm, n = 10000, args = list(mean = mean_all, sd = sd_all))
-  
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-101-2.png)<!-- -->
 
 ### bigger than 35
 
-Additionally we splited the outputs between long and short spacers (> 35 bp) 
-The two separate files allow us to plot the barplot bellow.
+Additionally we splited the outputs between long and short spacers (&gt;
+35 bp) The two separate files allow us to plot the barplot bellow.
 
-```{bash, eval=F}
+``` bash
 #!/bin/bash
 #SBATCH --job-name=merge                           # create a short name for your job
 #SBATCH --partition=pall
@@ -5055,14 +6314,11 @@ done
 
 cat ${output_file_long} | sort -n | uniq -c > ${sorted_output_file_long}
 cat ${output_file_short} | sort -n | uniq -c > ${sorted_output_file_short}
-
 ```
 
+Pad missing 0’s
 
-Pad missing 0's
-
-```{r}
-
+``` r
 #-----------------------------------------
 # Spacers longer than 35 basepairs
 
@@ -5087,7 +6343,11 @@ sum(CRISPRscope_tbl_26 %>%
   select(pairs) %>%
   drop_na()
 )
+```
 
+    ## [1] 234707
+
+``` r
 # Short ones [2] 443816
 sum(CRISPRscope_tbl_26 %>% 
   select(cluster_spacer_identity) %>% 
@@ -5099,15 +6359,15 @@ sum(CRISPRscope_tbl_26 %>%
   select(pairs) %>% 
   drop_na()
 )
-
-# 237719 + 443816 = 681535
-
 ```
 
+    ## [1] 440821
 
+``` r
+# 237719 + 443816 = 681535
+```
 
-```{r}
- 
+``` r
 # load raw files
 
 
@@ -5121,12 +6381,36 @@ pad_short <- rep(0, 443816)
 merged_slices_custom_long <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_1.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_long)
+```
+
+    ## Rows: 34791362 Columns: 1
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## dbl (1): X1
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 library(readr)
 merged_slices_custom_short <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_2.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_short)
+```
 
+    ## Rows: 101424403 Columns: 1
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## dbl (1): X1
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # Normal distribution of distance 
 meanlong = mean(merged_slices_custom_long$X1)
 sdlong = sd(merged_slices_custom_long$X1)
@@ -5154,16 +6438,36 @@ sorted_results_long <- read_table2(paste(data_folder, "/pairwise_alignment_resul
                                    col_names = c("count", "Editdistance")) %>%
   mutate(group = "long")%>% 
   add_row(count = 237719, Editdistance = 0, group="long") 
-  
+```
 
-  
-  
+    ## Warning: `read_table2()` was deprecated in readr 2.0.0.
+    ## Please use `read_table()` instead.
+
+    ## 
+    ## -- Column specification --------------------------------------------------------
+    ## cols(
+    ##   count = col_double(),
+    ##   Editdistance = col_double()
+    ## )
+
+``` r
 sorted_results_short <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results_custom_short.csv", sep=""), 
                                     col_names = c("count", "Editdistance")) %>%
   mutate(group = "short") %>% 
   add_row(count = 443816, Editdistance = 0, group="short") 
+```
 
+    ## Warning: `read_table2()` was deprecated in readr 2.0.0.
+    ## Please use `read_table()` instead.
 
+    ## 
+    ## -- Column specification --------------------------------------------------------
+    ## cols(
+    ##   count = col_double(),
+    ##   Editdistance = col_double()
+    ## )
+
+``` r
 sorted_results_2 <- bind_rows(sorted_results_long, sorted_results_short) %>% 
   arrange(Editdistance)
 
@@ -5171,7 +6475,11 @@ sorted_results_2 <- bind_rows(sorted_results_long, sorted_results_short) %>%
 total_obs_size = sum(sorted_results_2$count)
 
 total_obs_size == nlong + nshort # TRUE
+```
 
+    ## [1] TRUE
+
+``` r
 # # Normal distribution of distance > 10 
 # meanfit = mean(sorted_results_2 %>% filter(Editdistance > 10) %>% filter(!group == "long") %>% select(count) %>% unlist())
 # sdfit = sd(sorted_results_2 %>% filter(Editdistance > 10) %>% filter(!group == "long") %>% select(count) %>% unlist())
@@ -5191,7 +6499,22 @@ sorted_results_2 %>%
   geom_vline(xintercept=6) +
   labs(y="spacers (fraction)", x="Edit distance") +
   theme_classic()
+```
 
+    ## Warning: Ignoring unknown parameters: binwidth, bins, pad
+
+    ## Scale for 'fill' is already present. Adding another scale for 'fill', which
+    ## will replace the existing scale.
+
+    ## Warning: Multiple drawing groups in `geom_function()`. Did you use the correct
+    ## `group`, `colour`, or `fill` aesthetics?
+
+    ## Warning: Multiple drawing groups in `geom_function()`. Did you use the correct
+    ## `group`, `colour`, or `fill` aesthetics?
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-104-1.png)<!-- -->
+
+``` r
 # 
 # sorted_results_long %>% 
 #   #mutate(count = count/total_obs) %>% 
@@ -5209,32 +6532,31 @@ sorted_results_2 %>%
 # pnorm(5, mean=meanshort, sd=sdshort)
 
 pnorm(6, mean = mean_all, sd = sd_all)
-
-# OUTPUT PDF
-
-
 ```
 
+    ## [1] 9.314431e-08
 
-1) lot of unrelated spacers
-2) not only identical but also mutations.  -> zoom 1-10
-  mutation rate ? We don't know if bacteria acquire new spacer or do they mutate ?
-  
-TODO: plot with a cutoff/break of the y axis to show the 0's as well. 
+``` r
+# OUTPUT PDF
+```
 
-A few spacers seem to mutate, can be clearly seen as beyond the normal distribution of the random spacers -> mutated
-However they are not a lot. Comparison between 0 adn 1 (todo quantify). -> very rare 
-6 is a stringent cutoff: all spacers within edit distance 6 -> can be the clustering 80% proof -> 
+1.  lot of unrelated spacers
+2.  not only identical but also mutations. -&gt; zoom 1-10 mutation rate
+    ? We don’t know if bacteria acquire new spacer or do they mutate ?
 
+TODO: plot with a cutoff/break of the y axis to show the 0’s as well.
 
-
-
-
+A few spacers seem to mutate, can be clearly seen as beyond the normal
+distribution of the random spacers -&gt; mutated However they are not a
+lot. Comparison between 0 adn 1 (todo quantify). -&gt; very rare 6 is a
+stringent cutoff: all spacers within edit distance 6 -&gt; can be the
+clustering 80% proof -&gt;
 
 Same, this time separate the two groups by spacers are both 30bp or not
 
 ### 30 or not
-```{bash, eval=F}
+
+``` bash
 #!/bin/bash
 #SBATCH --job-name=merge                           # create a short name for your job
 #SBATCH --partition=pall
@@ -5280,13 +6602,11 @@ done
 
 cat ${output_file_30} | sort -n | uniq -c > ${sorted_output_file_30}
 cat ${output_file_not30} | sort -n | uniq -c > ${sorted_output_file_not30}
-
 ```
-
 
 Count the identical spacers (within cluster)
 
-```{r}
+``` r
 #------------------
 # Separate by "both are 30bp" or not
 
@@ -5311,7 +6631,11 @@ sum(CRISPRscope_tbl_26 %>%
   select(pairs) %>%
   drop_na()
 )
+```
 
+    ## [1] 71028
+
+``` r
 # not30: 609549
 sum(CRISPRscope_tbl_26 %>% 
   select(cluster_spacer_identity) %>% 
@@ -5323,14 +6647,17 @@ sum(CRISPRscope_tbl_26 %>%
   select(pairs) %>% 
   drop_na()
 )
-# 71028 + 609549 = 680577
+```
 
+    ## [1] 603542
+
+``` r
+# 71028 + 609549 = 680577
 ```
 
 Pad missing data and plot
 
-```{r}
-
+``` r
 # Load the 2 groups
 
 
@@ -5338,16 +6665,36 @@ sorted_results_30 <- read_table2(paste(data_folder, "/pairwise_alignment_results
                                    col_names = c("count", "Editdistance")) %>%
   mutate(group = "30s") %>% 
   add_row(count = 71028, Editdistance = 0, group="30s")
-  
+```
 
-  
-  
+    ## Warning: `read_table2()` was deprecated in readr 2.0.0.
+    ## Please use `read_table()` instead.
+
+    ## 
+    ## -- Column specification --------------------------------------------------------
+    ## cols(
+    ##   count = col_double(),
+    ##   Editdistance = col_double()
+    ## )
+
+``` r
 sorted_results_not30 <- read_table2(paste(data_folder, "/pairwise_alignment_results/sorted_results_custom_not30.csv", sep=""), 
                                     col_names = c("count", "Editdistance")) %>%
   mutate(group = "not30") %>% 
   add_row(count = 609549, Editdistance = 0, group="not30")
+```
 
+    ## Warning: `read_table2()` was deprecated in readr 2.0.0.
+    ## Please use `read_table()` instead.
 
+    ## 
+    ## -- Column specification --------------------------------------------------------
+    ## cols(
+    ##   count = col_double(),
+    ##   Editdistance = col_double()
+    ## )
+
+``` r
 sorted_results_3 <- bind_rows(sorted_results_30, sorted_results_not30) %>% 
   arrange(Editdistance)
 
@@ -5363,12 +6710,36 @@ pad_not30 <- rep(0, 609549)
 merged_slices_custom_30_1 <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_30_1.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_30)
+```
+
+    ## Rows: 17090781 Columns: 1
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## dbl (1): X1
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 library(readr)
 merged_slices_custom_not30_2 <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_not30_2.csv", sep=""), 
     col_names = FALSE) %>% 
   add_row(X1 = pad_not30)
+```
 
+    ## Rows: 119124984 Columns: 1
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## dbl (1): X1
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # Normal distribution of distance > 10 
 mean30 = mean(merged_slices_custom_30_1$X1)
 sd30 = sd(merged_slices_custom_30_1$X1)
@@ -5382,25 +6753,49 @@ total_obs = sum(sorted_results_3$count)
 
 
 n30
+```
+
+    ## [1] 17161809
+
+``` r
 nnot30 
+```
+
+    ## [1] 119734533
+
+``` r
 total_obs
+```
 
+    ## [1] 136896342
+
+``` r
 total_obs - (n30 + nnot30)
+```
 
+    ## [1] 0
 
+``` r
 sorted_results_30 %>% 
   #mutate(count = count/total_obs) %>% 
   ggplot(aes(x=Editdistance, y=count/n30, fill=group)) +
   geom_bar(position="dodge", stat = "identity") +
   stat_function(aes_(color="30s"),fun = dnorm, n = 10000, args = list(mean = mean30, sd = sd30)) 
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-107-1.png)<!-- -->
+
+``` r
 sorted_results_not30 %>% 
   #mutate(count = count/total_obs) %>% 
   ggplot(aes(x=Editdistance, y=count/nnot30, fill=group)) +
   geom_bar(position="dodge", stat = "identity")    +
   stat_function(aes_(color="Not30"),fun = dnorm, n = 10000, args = list(mean = meannot30, sd = sdnot30))
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-107-2.png)<!-- -->
 
+``` r
 sorted_results_3 %>% 
   filter(Editdistance < 10) %>%
   filter(Editdistance > 0) %>%
@@ -5409,27 +6804,35 @@ sorted_results_3 %>%
   geom_bar(position="stack", stat = "identity") +
   stat_function(aes_(color="30s"),fun = dnorm, n = 10000, args = list(mean = mean30, sd = sd30))   +
   stat_function(aes_(color="not30"),fun = dnorm, n = 10000, args = list(mean = meannot30, sd = sdnot30))
+```
 
+    ## Warning: Multiple drawing groups in `geom_function()`. Did you use the correct
+    ## `group`, `colour`, or `fill` aesthetics?
 
+    ## Warning: Multiple drawing groups in `geom_function()`. Did you use the correct
+    ## `group`, `colour`, or `fill` aesthetics?
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-107-3.png)<!-- -->
+
+``` r
 pnorm(5, mean=mean30, sd=sd30)
+```
+
+    ## [1] 2.048996e-09
+
+``` r
 pnorm(5, mean = meannot30, sd = sdnot30)
 ```
 
-
-
-
-
-
-
-
+    ## [1] 1.937192e-07
 
 ## Edit distance final plot
 
-From every spacer combn. we should be able to create plot witn ANI - edit distance where each point is a spacer. 
-Only do for edit distance < <6 !! 
+From every spacer combn. we should be able to create plot witn ANI -
+edit distance where each point is a spacer. Only do for edit distance
+&lt; &lt;6 !!
 
-
-```{r fig.width=14, fig.height=8}
+``` r
 require(scales)
 library(ggforce)
 library(ggpubr)
@@ -5455,30 +6858,46 @@ p1 <- sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
 p1
 ```
 
-numbers: How many spacers have edit < 6 ?
-```{r}
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-108-1.png)<!-- -->
+
+numbers: How many spacers have edit &lt; 6 ?
+
+``` r
 total_pairs <- sorted_results_1 %>% summarise(tot=sum(count)) %>% select(tot) %>% unlist()
 sorted_results_1 %>% filter(Editdistance <= 6) %>% summarise(tot = sum(count))
-678360 / total_pairs * 100
+```
 
+    ## # A tibble: 1 x 1
+    ##      tot
+    ##    <dbl>
+    ## 1 678360
+
+``` r
+678360 / total_pairs * 100
+```
+
+    ##       tot 
+    ## 0.4955409
+
+``` r
 total_identical <- sorted_results_1 %>% filter(Editdistance < 1) %>% summarise(tot = sum(count)) %>% select(tot) %>% unlist()
 
 total_identical / 678360 * 100
 ```
 
-
+    ##      tot 
+    ## 99.81101
 
 Generated bellow (chapter random verification)
-```{r}
 
+``` r
 sd_random = 2.126582
 mean_random = 18.73111
 ```
 
+gg.gap is not working as expected, Second way, with ggarrange
 
-gg.gap is not working as expected,
-Second way, with ggarrange
-```{r fig.width=14, fig.height=8}
+``` r
 p2 <- sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
   geom_col()  +
   stat_function(aes_(color="All data"),fun = dnorm, n = 10000, args = list(mean = mean_all, sd = sd_all)) +
@@ -5520,12 +6939,13 @@ p_gap <- ggpubr::ggarrange(p3, p2, ncol = 1, nrow = 2, align = c("v"))
 
 
 p_gap
-
 ```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-111-1.png)<!-- -->
 
 Take the big graph and darken the 0-10 area
 
-```{r}
+``` r
 pgrand <- sorted_results_1 %>% 
   ggplot(aes(x=Editdistance, y=count/total_obs)) +
   geom_col()  +
@@ -5547,19 +6967,30 @@ pgrand <- sorted_results_1 %>%
 pgrand
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-112-1.png)<!-- -->
+
 Combine plots:
 
-```{r fig.height=6, fig.width=10}
-
+``` r
 require(gridExtra)
 final_edit_plot <- grid.arrange(p_gap,pgrand,
              ncol=2, 
              widths=c(40,40)
              )
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-113-1.png)<!-- -->
+
+``` r
 final_edit_plot
+```
 
+    ## TableGrob (1 x 2) "arrange": 2 grobs
+    ##   z     cells    name           grob
+    ## 1 1 (1-1,1-1) arrange gtable[layout]
+    ## 2 2 (1-1,2-2) arrange gtable[layout]
 
+``` r
 ggsave(
   plot = final_edit_plot,
   file = paste(google_drive_folder,"/EDIT_gap_zoom_plot.pdf", sep = ""),
@@ -5569,55 +7000,55 @@ ggsave(
   units = "cm",
   dpi = 800
 )
-
-
 ```
 
+Exploration:
 
-
-
-
-
-
-Exploration: 
-
-```{r}
+``` r
 sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
   geom_col()  +
   stat_function(aes_(color="overall"),fun = dnorm, n = 10000, args = list(mean = mean_all, sd = sd_all)) +
   stat_function(aes_(color="long"),fun = dnorm, n = 10000, args = list(mean = meanlong_over10, sd = sdlong_over10)) +
   stat_function(aes_(color="short"),fun = dnorm, n = 10000, args = list(mean = meanshort_over10, sd = sdshort_over10)) 
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-114-1.png)<!-- -->
+
+``` r
 sum(sorted_results_1 %>% filter(Editdistance <= 6) %>% select(count) %>% unlist())
 ```
 
+    ## [1] 678360
 
+\#——————————- \# Edit dist & ANI
 
-
-
-
-#-------------------------------
-# Edit dist & ANI
-
-For each edit distance smaller or equal to 6, get the possible organisms (strain) pairs belonging to clst1 and clst2 and their ANI
-
+For each edit distance smaller or equal to 6, get the possible organisms
+(strain) pairs belonging to clst1 and clst2 and their ANI
 
 cluster cluster EDIT
-
 
 strain strain ANI
 
 Needs: cluster strain
 
-
-```{r}
+``` r
 # Cluster-cluster Edit distance
 #test <- read_csv("C:/Users/thsch/Desktop/tmp/test.csv", col_names = c("clst1", "clst2", "EDIT"))
 merged_slices_custom_dist6 <- read_csv(paste(data_folder, "/pairwise_alignment_results/merged_slices_custom_dist6.csv", sep=""), 
     col_names = c("clst1", "clst2", "EDIT"))
+```
 
+    ## Rows: 1282 Columns: 3
 
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## dbl (3): clst1, clst2, EDIT
 
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # WIP add EDIT 0
 
 
@@ -5633,16 +7064,25 @@ EDIT0 <- CRISPRscope_tbl_26 %>%
 
 
 merged_slices_custom_dist6 <- merged_slices_custom_dist6 %>% bind_rows(EDIT0)
-
-
-
 ```
 
-
-```{r fig.width=12, fig.height=6}
+``` r
 # Strain-strain ANI
 ANI_Shared_spacers_strain_pair <- read_csv(paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
+```
 
+    ## Rows: 160236 Columns: 8
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (4): species_query, strain_query, species_ref, strain_ref
+    ## dbl (4): ANI, bidirectional_fragment_mapping, total_query_fragment, shared_s...
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # Merge 
 
 EDIT_VS_ANI <- inner_join(merged_slices_custom_dist6, 
@@ -5675,14 +7115,12 @@ ggsave(
 )
 
 plt
-
-
-
 ```
-# Density plot ANI EDIT<6
 
-```{r}
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-116-1.png)<!-- -->
+\# Density plot ANI EDIT&lt;6
 
+``` r
 EDIT_VS_ANI_2 <- inner_join(merged_slices_custom_dist6, 
                           CRISPRscope_tbl_26 %>% 
                             select(cluster_spacer_identity, Strain), by = c("clst1" = "cluster_spacer_identity")) %>% 
@@ -5698,8 +7136,11 @@ EDIT_VS_ANI_2 %>% filter(EDIT > 1) %>% select(ANI) %>%
   ggplot(aes(x=ANI)) +
   geom_density() +
   ggtitle("ANI VS EDIT of shared spacers. 1 < EDIT < 6 ")
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-117-1.png)<!-- -->
 
+``` r
 # IN SUPPLEMENTARY FIG. 
 EDIT_VS_ANI_2 %>% select(ANI) %>% 
   ggplot(aes(x=ANI, ..scaled..)) +
@@ -5707,42 +7148,67 @@ EDIT_VS_ANI_2 %>% select(ANI) %>%
   ggtitle("ANI VS EDIT of shared spacers. 0 < EDIT < 6 ")+
   theme_classic() +
   ylab("Density")
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-117-2.png)<!-- -->
+
+``` r
 ptot <- EDIT_VS_ANI_2 %>% summarise(n = n()) %>% select(n) %>% unlist()
 p995 <- EDIT_VS_ANI_2 %>% filter(ANI > 99.5) %>% summarise(n = n()) %>% select(n) %>% unlist()
 p005 <- EDIT_VS_ANI_2 %>% filter(ANI <= 99.5) %>% summarise(n = n()) %>% select(n) %>% unlist()
 p995/ptot*100
-p005/ptot*100
+```
 
+    ##        n 
+    ## 90.21758
+
+``` r
+p005/ptot*100
+```
+
+    ##        n 
+    ## 9.782417
+
+``` r
 EDIT_VS_ANI_2 %>% select(ANI, EDIT) %>% filter(EDIT > 1) %>% 
   ggplot(aes(x=ANI, y=EDIT)) +
   geom_density_2d_filled() +
   ggtitle("ANI VS EDIT of shared spacers. 1 < EDIT < 6 ")
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-117-3.png)<!-- -->
 
-# -------------------------
+# ————————-
+
 # SEED: Where are the mutations?
 
-SEED sequence mutation: among the short edit distance pairs, check where the mutations are. 
+SEED sequence mutation: among the short edit distance pairs, check where
+the mutations are.
 
-https://stat.ethz.ch/pipermail/bioc-sig-sequencing/2009-July/000468.html
-https://www.rdocumentation.org/packages/IRanges/versions/2.6.1/topics/RangesList-class
-https://rdrr.io/bioc/IRanges/man/IRangesList-class.html
+<https://stat.ethz.ch/pipermail/bioc-sig-sequencing/2009-July/000468.html>
+<https://www.rdocumentation.org/packages/IRanges/versions/2.6.1/topics/RangesList-class>
+<https://rdrr.io/bioc/IRanges/man/IRangesList-class.html>
 
-=> https://bioconductor.org/packages/devel/bioc/vignettes/Biostrings/inst/doc/PairwiseAlignments.pdf
+=&gt;
+<https://bioconductor.org/packages/devel/bioc/vignettes/Biostrings/inst/doc/PairwiseAlignments.pdf>
 
+## All pairs &lt; edit6
 
+idea: snp = edit - (gap length -&gt; end - start)
 
-## All pairs < edit6
-
-idea: snp = edit - (gap length -> end - start)
-
-
-```{r}
+``` r
 require(Biostrings)
 library(stringdist)
+```
+
+    ## 
+    ## Attachement du package : 'stringdist'
+
+    ## L'objet suivant est masqué depuis 'package:tidyr':
+    ## 
+    ##     extract
+
+``` r
 library(furrr)
 
 # if (!requireNamespace("BiocManager", quietly=TRUE))
@@ -5790,15 +7256,9 @@ edit6_sequences <- merged_slices_custom_dist6 %>% filter(EDIT > 0) %>%
 edit6_sequences_reordered <- edit6_sequences %>%
   mutate(y.new = future_map2(seq1, seq2, pairwise_comparison_modify_seq_orientation, .progress = TRUE)) %>%
   unnest(y.new) %>% select(-seq2) %>% dplyr::rename(seq2=y.new)
-
-
-
 ```
 
-
-```{r}
-
-
+``` r
 set1 <- DNAStringSet(edit6_sequences_reordered %>% select(seq1) %>% unlist())
 set2 <- DNAStringSet(edit6_sequences_reordered %>% select(seq2) %>% unlist())
 
@@ -5839,7 +7299,134 @@ for ( i in 1:15){#(length(set1) - 1 )) {
   tmp = tibble(start = c(starts %>% unlist()), end = c(ends %>% unlist()))
   insertions_ <- insertions_ %>% bind_rows(tmp)
 }
+```
 
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1            6          6                T              7
+    ## 2         1           24         24                T              7
+    ## 3         1           27         27                G              7
+    ## 4         1           30         30                C              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1            6          6                C              7
+    ## 2           24         24                C              7
+    ## 3           27         27                T              7
+    ## 4           30         30                A              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1            5          5                T              7
+    ## 2         1           16         16                G              7
+    ## 3         1           22         22                T              7
+    ## 4         1           25         25                C              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1            4          4                A              7
+    ## 2           15         15                A              7
+    ## 3           21         21                C              7
+    ## 4           24         24                T              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1           18         18                C              7
+    ## 2         1           24         24                T              7
+    ## 3         1           27         27                T              7
+    ## 4         1           29         29                A              7
+    ## 5         1           30         30                T              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1           18         18                T              7
+    ## 2           24         24                C              7
+    ## 3           27         27                C              7
+    ## 4           29         29                T              7
+    ## 5           30         30                C              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1           12         12                T              7
+    ## 2         1           30         30                C              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1           12         12                A              7
+    ## 2           30         30                T              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1           15         15                C              7
+    ## 2         1           17         17                A              7
+    ## 3         1           29         29                G              7
+    ## 4         1           31         31                G              7
+    ## 5         1           32         32                A              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1           15         15                A              7
+    ## 2           17         17                G              7
+    ## 3           28         28                T              7
+    ## 4           30         30                C              7
+    ## 5           31         31                G              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1           10         10                T              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1            9          9                G              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1            2          2                G              7
+    ## 2         1           14         14                G              7
+    ## 3         1           23         23                T              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1            4          4                A              7
+    ## 2           16         16                A              7
+    ## 3           25         25                C              7
+    ## [1] PatternId        PatternStart     PatternEnd       PatternSubstring
+    ## [5] PatternQuality   SubjectStart     SubjectEnd       SubjectSubstring
+    ## [9] SubjectQuality  
+    ## <0 lignes> (ou 'row.names' de longueur nulle)
+    ## [1] PatternId        PatternStart     PatternEnd       PatternSubstring
+    ## [5] PatternQuality   SubjectStart     SubjectEnd       SubjectSubstring
+    ## [9] SubjectQuality  
+    ## <0 lignes> (ou 'row.names' de longueur nulle)
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1           24         24                A              7
+    ## 2         1           25         25                A              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1           24         24                G              7
+    ## 2           25         25                G              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1           30         30                T              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1           30         30                A              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1           14         14                G              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1           17         17                T              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1            1          1                C              7
+    ## 2         1            5          5                G              7
+    ## 3         1           13         13                A              7
+    ## 4         1           18         18                G              7
+    ## 5         1           23         23                T              7
+    ## 6         1           30         30                T              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1            1          1                A              7
+    ## 2            5          5                A              7
+    ## 3           13         13                G              7
+    ## 4           18         18                A              7
+    ## 5           23         23                A              7
+    ## 6           30         30                C              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1            2          2                A              7
+    ## 2         1            9          9                A              7
+    ## 3         1           14         14                C              7
+    ## 4         1           19         19                T              7
+    ## 5         1           27         27                C              7
+    ## 6         1           31         31                G              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1            2          2                G              7
+    ## 2            9          9                T              7
+    ## 3           14         14                T              7
+    ## 4           19         19                C              7
+    ## 5           27         27                T              7
+    ## 6           31         31                T              7
+    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
+    ## 1         1            3          3                G              7
+    ## 2         1           11         11                A              7
+    ## 3         1           16         16                G              7
+    ## 4         1           21         21                T              7
+    ## 5         1           28         28                T              7
+    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
+    ## 1            5          5                A              7
+    ## 2           13         13                G              7
+    ## 3           18         18                A              7
+    ## 4           23         23                A              7
+    ## 5           30         30                C              7
+
+``` r
 # 
 # plot_mismatch <- mismatches_ %>% 
 #   ggplot(aes(x = mismatch)) +
@@ -5883,16 +7470,27 @@ plot_in <- insertions_ %>% gather(Insertion) %>%
 # )
 
 plot_in
-plot_del
-plot_mismatch_tbl
-
 ```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-119-1.png)<!-- -->
+
+``` r
+plot_del
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-119-2.png)<!-- -->
+
+``` r
+plot_mismatch_tbl
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-119-3.png)<!-- -->
 
 ## By cas-types
 
-The same but with separation between Cas_subtypes
+The same but with separation between Cas\_subtypes
 
-```{r}
+``` r
 require(Biostrings)
 
 
@@ -5906,7 +7504,24 @@ edit6_sequences_type <- merged_slices_custom_dist6 %>% filter(EDIT > 0) %>%
   dplyr::rename(seq2 = SpacerSeq) %>% dplyr::rename(type2 = type)  %>% distinct()
 
 edit6_sequences_type # 2330 pairs
+```
 
+    ## # A tibble: 2,330 x 7
+    ##    clst1 clst2  EDIT seq1                    type1 seq2                    type2
+    ##    <dbl> <dbl> <dbl> <chr>                   <chr> <chr>                   <chr>
+    ##  1 25760 42841     5 GCCGGTATTCAGTGCATCATGG~ I     TTTGGAACGACCATGATGCACT~ I    
+    ##  2 23611 42842     5 TACGTCGCCGATTACGTTCAAT~ I     ACGACGCCGATTACATTCAACG~ I    
+    ##  3 25788 42842     6 GTTGCATTATCGTTGAACGTAA~ I     ACGACGCCGATTACATTCAACG~ I    
+    ##  4 23821 42846     3 CCCTGATGTGATGGTGCCGGCC~ I     CCCTGATGTGAAGGTGCCGGCC~ I    
+    ##  5 23443 42871     6 TGGAGCAGGTCAAGCTATTCAA~ I     CCGTAAGTAATTGAACATCTTG~ I    
+    ##  6 13093 42885     4 CGACCTGAATTCAGTCGGCATC~ I     GACCTGAAGTCAGTCGGCATCC~ I    
+    ##  7 56529 42896     5 AGGCAGAAAAGAAGTATTTTGG~ II    TTAAGCAGAAAAGAAATATTTT~ II   
+    ##  8 46780 44163     1 AAAAAAGCCGCGGAACTTCTCG~ II    GTCTCAGCCCGAGAAGTTCCGC~ II   
+    ##  9 46780 44163     1 GTCTAGCCCGAGAAGTTCCGCG~ II    GTCTCAGCCCGAGAAGTTCCGC~ II   
+    ## 10  4002  4056     2 TTCACAAAAGTTTCTACAGGTG~ I     TTCACAAAAGTTTCTACAGGTG~ I    
+    ## # ... with 2,320 more rows
+
+``` r
 # Here we remove the pairs where the two sequences do not come from the same crispr type
 # surprisingly, only 28 pairs have sequences coming from a different cas type. 
 
@@ -5986,11 +7601,12 @@ indel_position <- function(set1, set2){
 }
 ```
 
-
 ## Plots
-Insertion and deletion position in the spacer pairs with an edit distance < 6
 
-```{r fig.width=12, fig.height=8}
+Insertion and deletion position in the spacer pairs with an edit
+distance &lt; 6
+
+``` r
 type_1_plots <- indel_position(set1_t1, set2_t1)
 
 # ggsave(
@@ -6024,6 +7640,11 @@ type_1_plots <- indel_position(set1_t1, set2_t1)
 library("gridExtra")
 figure <- grid.arrange(type_1_plots[[1]], type_1_plots[[2]], type_1_plots[[3]],
              ncol = 3, nrow = 1)
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-121-1.png)<!-- -->
+
+``` r
 figure <- annotate_figure(figure,
                 top = text_grob("Type I spacers", color = "black", face = "bold", size = 14),
                 #bottom = text_grob("Data source: \n mtcars data set", color = "blue",
@@ -6047,8 +7668,9 @@ ggsave(
 figure
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-121-2.png)<!-- -->
 
-```{r fig.width=12, fig.height=8}
+``` r
 type_2_plots <- indel_position(set1_t2, set2_t2)
 
 # ggsave(
@@ -6082,6 +7704,11 @@ type_2_plots <- indel_position(set1_t2, set2_t2)
 
 figure <- grid.arrange(type_2_plots[[1]], type_2_plots[[2]], type_2_plots[[3]],
              ncol = 3, nrow = 1)
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-122-1.png)<!-- -->
+
+``` r
 figure <- annotate_figure(figure,
                 top = text_grob("Type II spacers", color = "black", face = "bold", size = 14),
                 #bottom = text_grob("Data source: \n mtcars data set", color = "blue",
@@ -6102,11 +7729,11 @@ ggsave(
 )
 
 figure
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-122-2.png)<!-- -->
 
-```{r fig.width=12, fig.height=8}
+``` r
 type_3_plots <- indel_position(set1_t3, set2_t3)
 
 # ggsave(
@@ -6140,6 +7767,11 @@ type_3_plots <- indel_position(set1_t3, set2_t3)
 library("gridExtra")
 figure <- grid.arrange(type_3_plots[[1]], type_3_plots[[2]], type_3_plots[[3]],
              ncol = 3, nrow = 1)
+```
+
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-123-1.png)<!-- -->
+
+``` r
 figure <- annotate_figure(figure,
                 top = text_grob("Type III spacers", color = "black", face = "bold", size = 14),
                 #bottom = text_grob("Data source: \n mtcars data set", color = "blue",
@@ -6159,25 +7791,35 @@ ggsave(
 )
 
 figure
-
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-123-2.png)<!-- -->
 
+# ————————-
 
-
-
-# -------------------------
 # Genome and CRISPR nucleotide diversity
 
 CRISPR spacer nucleotide diversity (%)
 
 Core genome nucleotide diversity (%)
 
-
-```{r}
+``` r
 # Strain-strain ANI
 ANI_Shared_spacers_strain_pair <- read_csv(file=paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair.csv", sep=""))
+```
 
+    ## Rows: 160236 Columns: 8
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (4): species_query, strain_query, species_ref, strain_ref
+    ## dbl (4): ANI, bidirectional_fragment_mapping, total_query_fragment, shared_s...
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # Merge 
 
 EDIT_VS_ANI_VS_LEN <- inner_join(merged_slices_custom_dist6, 
@@ -6220,7 +7862,11 @@ plt_filtered <- EDIT_VS_ANI_VS_LEN %>% filter(ANI_100 > 1.9) %>% filter(ANI_100 
   xlab("CRISPR spacer nucleotide diversity (%)") +
   ylab("core genome nucleotide diversity (%)")
 plt_filtered
+```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-124-1.png)<!-- -->
+
+``` r
 ggsave(
   plot = plt,
   file = paste(google_drive_folder,"/ANI_EDIT_diversity_percentage.pdf", sep = ""),
@@ -6230,14 +7876,26 @@ ggsave(
   units = "cm",
   dpi = 800
 )
+```
 
+    ## Warning: Removed 38714 rows containing non-finite values (stat_boxplot).
+
+    ## Warning: Removed 38714 rows containing missing values (geom_point).
+
+``` r
 plt
 ```
 
-Mean and sd of the distance of the above region of interest, where Edit_len = 0. 
+    ## Warning: Removed 38714 rows containing non-finite values (stat_boxplot).
 
+    ## Warning: Removed 38714 rows containing missing values (geom_point).
 
-```{r}
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-124-2.png)<!-- -->
+
+Mean and sd of the distance of the above region of interest, where
+Edit\_len = 0.
+
+``` r
 #--- zoom in and add mean and sd of the relative distance to the leader----
 EDIT_VS_ANI_VS_LEN_V2 <- inner_join(merged_slices_custom_dist6, 
                           CRISPRscope_tbl_26 %>% 
@@ -6263,12 +7921,11 @@ EDIT_VS_ANI_VS_LEN_V2 %>% ggplot(aes(x=mean_dist, y=sd_dist)) +
   geom_point()
 ```
 
-
-
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-125-1.png)<!-- -->
 
 ## Comparison with core genome diversity (?)
-```{r}
 
+``` r
 EDIT_VS_ANI_VS_LEN_V3 <- inner_join(merged_slices_custom_dist6, 
                           CRISPRscope_tbl_26 %>% 
                             select(cluster_spacer_identity, Strain, SpacerSeq, rel_dist_leader), by = c("clst1" = "cluster_spacer_identity")) %>% 
@@ -6304,17 +7961,32 @@ plt3 <- EDIT_VS_ANI_VS_LEN_V3 %>% ggplot(aes(x=ratio)) +
   ylab("")
 
 EDIT_VS_ANI_VS_LEN_V3
+```
+
+    ## # A tibble: 14,795 x 3
+    ##    EDIT_len ANI_100 ratio
+    ##       <dbl>   <dbl> <dbl>
+    ##  1    14.4    1.26  11.4 
+    ##  2    14.4    1.26  11.4 
+    ##  3    14.4    1.30  11.1 
+    ##  4    17.3    1.26  13.7 
+    ##  5     8.66   1.37   6.30
+    ##  6    17.3    1.51  11.5 
+    ##  7    11.5    1.15  10.1 
+    ##  8    11.5    1.07  10.8 
+    ##  9    14.4    0.798 18.1 
+    ## 10     2.89   2.01   1.44
+    ## # ... with 14,785 more rows
+
+``` r
 plt3
 ```
 
+![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-126-1.png)<!-- -->
 
+\#— \# Function - facet zoom 2
 
-
-
-#---
-# Function - facet zoom 2
-
-```{r ,eval=FALSE}
+``` r
 # define facet_zoom2 function to use FacetZoom2 instead of FacetZoom
 # (everything else is the same as facet_zoom)
 facet_zoom2 <- function(x, y, xy, zoom.data, xlim = NULL, ylim = NULL, 
@@ -6532,18 +8204,14 @@ FacetZoom2 <- ggproto(
 )
 ```
 
+# ————————-
 
-
-
-# -------------------------
 # Edit distance Randomness Verification
 
-The aim is to verify that the large spacer comparison peak at mean edit distance 18 is actually random spacer comparisons. 
+The aim is to verify that the large spacer comparison peak at mean edit
+distance 18 is actually random spacer comparisons.
 
-
-
-
-```{r eval=F}
+``` r
 #BiocManager::install("ShortRead")
 library(SimRAD)
 library(data.table) # fwrite
@@ -6618,15 +8286,11 @@ results_random_edit <- random_edit_distance_raw %>% select(dist) %>% dplyr::coun
   dplyr::rename(count = n) %>% 
   dplyr::rename(Editdistance = dist) %>% 
   mutate(total_obs = sum(count))
-
-
-
 ```
-
 
 ## Plot
 
-```{r, fig.height=8, fig.width=12,eval=FALSE}
+``` r
 require(scales)
 library(ggforce)
 library(ggpubr)
@@ -6714,17 +8378,11 @@ ggsave(
   units = "cm",
   dpi = 800
 )
-
-
 ```
 
+## Compare overall with random
 
-
-
-## Compare overall with random 
-
-```{r,eval=FALSE}
-
+``` r
 # Count all values / values > 6 and < 30
 total_edit <- sorted_results_1 %>% summarise(total = sum(count))
 edit_smaller_equal_6 <- sorted_results_1 %>% filter(Editdistance <= 6)  %>% summarise(total = sum(count))
@@ -6747,18 +8405,10 @@ sd(center_edit$X1)
 # Mean and sd of random sequences
 mean(random_edit_distance_raw$dist)
 sd(random_edit_distance_raw$dist)
-
 ```
 
-
-
-
-
-# -
-# -
 # -
 
+# -
 
-
-
-
+# -
