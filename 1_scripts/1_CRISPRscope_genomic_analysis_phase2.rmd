@@ -2726,7 +2726,7 @@ Same strain -> 100% ANI
 Different strain/same species -> get from ANI df
 Different species -> ignore 
 
-```{r}
+```{r, eval=FALSE}
 # library(furrr)
 
 # DATA
@@ -5795,9 +5795,11 @@ edit6_sequences_reordered <- edit6_sequences %>%
 
 ```
 
+Warning: indel function problems
 
-```{r}
 
+```{r eval=F}
+require(Biostrings)
 
 set1 <- DNAStringSet(edit6_sequences_reordered %>% select(seq1) %>% unlist())
 set2 <- DNAStringSet(edit6_sequences_reordered %>% select(seq2) %>% unlist())
@@ -5823,7 +5825,7 @@ for ( i in 1:15){#(length(set1) - 1 )) {
   
   #---- deletions
   
-  deletions <- indel(pattern(align))
+  deletions <- Biostrings::indel(Biostrings::pattern(align))
   starts = as.list(start(deletions))
   ends = as.list(end(deletions))
   
@@ -5832,7 +5834,7 @@ for ( i in 1:15){#(length(set1) - 1 )) {
   deletions_ <- deletions_ %>% bind_rows(tmp)
   
   #---- insertions
-  insertions <- indel(subject(align))
+  insertions <- Biostrings::indel(Biostrings::subject(align))
   starts = as.list(start(insertions))
   ends = as.list(end(insertions))
   
@@ -5947,7 +5949,7 @@ indel_position <- function(set1, set2){
     
     #---- deletions
     
-    deletions <- indel(pattern(align))
+    deletions <- Biostrings::indel(Biostrings::pattern(align))
     starts = as.list(start(deletions))
     ends = as.list(end(deletions))
     
@@ -5955,7 +5957,7 @@ indel_position <- function(set1, set2){
     deletions_ <- deletions_ %>% bind_rows(tmp)
     
     #---- insertions
-    insertions <- indel(subject(align))
+    insertions <- Biostrings::indel(Biostrings::subject(align))
     starts = as.list(start(insertions))
     ends = as.list(end(insertions))
     

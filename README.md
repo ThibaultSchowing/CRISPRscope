@@ -32,7 +32,7 @@ Switzerland
 
 ## 1_scripts
 
-Statistical analysis of the pipelines outputs. The outputs consists of the CRISPR content for genomes and metagenomes. Data are not available (yet) for property reasons.
+Statistical analysis of the pipelines outputs. The outputs consists of the CRISPR content for genomes and metagenomes. Genomes are not available (yet) for property reasons.
 Note that the main datasets will be modified during the analysis (e.g. adding sequences GC content / pairwise comparison data / etc) 
 
 | File | Description |
