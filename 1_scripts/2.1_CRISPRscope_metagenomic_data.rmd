@@ -1,8 +1,11 @@
 ---
 title: "2_CRISPRscope_metagenomic_data"
 author: "Thibault Schowing"
-date: "21/01/2021"
-output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  github_document:
+    toc: true
+always_allow_html: true
 ---
 
 ```{r setup, include=FALSE}
