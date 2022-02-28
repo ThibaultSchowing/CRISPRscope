@@ -1,7 +1,7 @@
 1.2\_CRISPRscope\_genomic\_analysis
 ================
 Thibault Schowing
-20 septembre, 2021
+28 février, 2022
 
 -   [Import libraries](#import-libraries)
 -   [Folders](#folders)
@@ -1352,7 +1352,7 @@ CRISPRscope_tbl_26 %>% group_by(Strain) %>% summarise(nbArray = n_distinct(Array
   geom_bar(stat="identity")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-31-1.png)<!-- -->
+![](./Figs/unnamed-chunk-31-1.png)<!-- -->
 
 Here we count the number of assemblies available, and the ones left with
 high quality CRISPR in the end.
@@ -1423,7 +1423,7 @@ ggsave(
 db_plot
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-32-1.png)<!-- -->
+![](./Figs/unnamed-chunk-32-1.png)<!-- -->
 
 Data for the “number of assemblies per crispr containing species” plot.
 
@@ -1552,7 +1552,7 @@ ggsave(
 plt
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-34-1.png)<!-- -->
+![](./Figs/unnamed-chunk-34-1.png)<!-- -->
 
 ## <stat> Assembly ratio
 
@@ -1650,7 +1650,7 @@ ggsave(
 plt_crispr_assembly_ratio
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-36-1.png)<!-- -->
+![](./Figs/unnamed-chunk-36-1.png)<!-- -->
 
 ## distances and clusters
 
@@ -1687,7 +1687,7 @@ CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% summarise(mean_rel_
   geom_point()
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-37-1.png)<!-- -->
+![](./Figs/unnamed-chunk-37-1.png)<!-- -->
 
 ``` r
 # with 80% clusters
@@ -1706,7 +1706,7 @@ CRISPRscope_tbl_26 %>% group_by(cluster_spacer) %>% summarise(mean_rel_dist = me
 
     ## Adding missing grouping variables: `cluster_spacer`
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-37-2.png)<!-- -->
+![](./Figs/unnamed-chunk-37-2.png)<!-- -->
 
 ``` r
 CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% summarise(mean_rel_dist = mean(rel_dist_leader), sd_rel_dist = sd(rel_dist_leader)) %>% drop_na() %>% 
@@ -1717,7 +1717,7 @@ CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% summarise(mean_rel_
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-37-3.png)<!-- -->
+![](./Figs/unnamed-chunk-37-3.png)<!-- -->
 
 ``` r
 CRISPRscope_tbl_26 %>% group_by(cluster_spacer_identity) %>% dplyr::count()
@@ -1809,7 +1809,7 @@ CRISPRscope_tbl_26 %>% select(SpacerSeq) %>%
   geom_col()
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-40-1.png)<!-- -->
+![](./Figs/unnamed-chunk-40-1.png)<!-- -->
 
 ``` r
 # One per 100% identity cluster
@@ -1822,8 +1822,7 @@ CRISPRscope_tbl_26 %>% select(SpacerSeq, cluster_spacer_identity) %>%
   geom_col()
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-40-2.png)<!-- -->
-\#\#
+![](./Figs/unnamed-chunk-40-2.png)<!-- --> \#\#
 <p>
 
 spacer count per array
@@ -1840,7 +1839,7 @@ tmp_arrcount %>% dplyr::count(ArrayID, Cas_subtype) %>% ggplot(aes(x=n)) +
   facet_wrap(~Cas_subtype)
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
+![](./Figs/unnamed-chunk-41-1.png)<!-- -->
 
 ## Total number of spacers
 
@@ -1964,7 +1963,7 @@ g_sp_gc <- egg::ggarrange(
 
     ## Warning: Removed 8 rows containing non-finite values (stat_density_ridges).
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-44-1.png)<!-- -->
+![](./Figs/unnamed-chunk-44-1.png)<!-- -->
 
 ## Repeats GC content
 
@@ -2057,7 +2056,7 @@ g_dr_gc <- egg::ggarrange(
 
     ## Picking joint bandwidth of 3.4
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-46-1.png)<!-- -->
+![](./Figs/unnamed-chunk-46-1.png)<!-- -->
 
 ## Spacer length
 
@@ -2150,7 +2149,7 @@ g_spsize <- egg::ggarrange(
 
     ## Picking joint bandwidth of 0.291
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-48-1.png)<!-- -->
+![](./Figs/unnamed-chunk-48-1.png)<!-- -->
 
 ## Spacers count
 
@@ -2248,7 +2247,7 @@ g_spcount <- egg::ggarrange(
 
     ## Picking joint bandwidth of 10.9
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
+![](./Figs/unnamed-chunk-49-1.png)<!-- -->
 
 ## Host GC content
 
@@ -2322,7 +2321,7 @@ plt4
 
     ## Picking joint bandwidth of 0.454
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-51-1.png)<!-- -->
+![](./Figs/unnamed-chunk-51-1.png)<!-- -->
 
 ``` r
 library(ggpubr)
@@ -2355,7 +2354,7 @@ g_gccont <- egg::ggarrange(
 
     ## Picking joint bandwidth of 0.454
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-51-2.png)<!-- -->
+![](./Figs/unnamed-chunk-51-2.png)<!-- -->
 
 ## Merge plots
 
@@ -2367,7 +2366,7 @@ G26_overview_plt <- grid.arrange(g_sp_gc,g_dr_gc,g_gccont,g_spsize,g_spcount,
              )
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
+![](./Figs/unnamed-chunk-52-1.png)<!-- -->
 
 ``` r
 ggsave(
@@ -2547,7 +2546,7 @@ GC_contents_plots
     ## Warning in wilcox.test.default(c(37.801258974359, 47.5694611111111, 38.682536, :
     ## cannot compute exact p-value with ties
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
+![](./Figs/unnamed-chunk-53-1.png)<!-- -->
 
 \#———————————————- \# ANI
 
@@ -2754,7 +2753,7 @@ Filter the data by removing all strain pairs that do not share spacers
 at all and by taking only ANI over 95%, the species limit.
 
 ``` r
-ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair2.csv", sep="")) # 21 species
+ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair2.csv", sep=""), lazy = FALSE) # 21 species
 ```
 
     ## New names:
@@ -2787,7 +2786,7 @@ ANI_Shared_spacers_strain_pair_filtered %>%
 
 ``` r
 library(stats)
-ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep="")) %>% 
+ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep=""), lazy = FALSE) %>% 
   #filter(species_query == "Lacticaseibacillus_rhamnosus") %>% 
   mutate(species_query = gsub("_", " ", species_query))
 ```
@@ -2888,7 +2887,7 @@ plot_per_species <-
 plot_per_species
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-60-1.png)<!-- -->
+![](./Figs/unnamed-chunk-60-1.png)<!-- -->
 
 \#TODO slope glm
 
@@ -3008,7 +3007,7 @@ ggsave(
 plot_per_species
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-61-1.png)<!-- -->
+![](./Figs/unnamed-chunk-61-1.png)<!-- -->
 
 ``` r
 lm(ANI_Shared_spacers_strain_pair_filtered$shared_spacer_numeric ~ ANI_Shared_spacers_strain_pair_filtered$ANI)
@@ -3110,7 +3109,7 @@ ggsave(
 plot_per_species2
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-63-1.png)<!-- -->
+![](./Figs/unnamed-chunk-63-1.png)<!-- -->
 
 ## <ANI numbers>
 
@@ -3192,7 +3191,7 @@ df_seg2 <- ANI_Shared_spacers_strain_pair %>%
 df_seg2
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-65-1.png)<!-- -->
+![](./Figs/unnamed-chunk-65-1.png)<!-- -->
 
 \#\#
 <p>
@@ -3268,7 +3267,7 @@ ggsave(
 plot_ANI45
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-66-1.png)<!-- -->
+![](./Figs/unnamed-chunk-66-1.png)<!-- -->
 
 \#\#
 <p>
@@ -3330,7 +3329,7 @@ plot_ANI3 <- df3 %>% ggplot(aes(x=shared_spacer_numeric)) +
 plot_ANI3
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-67-1.png)<!-- -->
+![](./Figs/unnamed-chunk-67-1.png)<!-- -->
 
 \#———————————————- \# Per-array ANI / shared spacers
 
@@ -3345,20 +3344,7 @@ Different species -&gt; ignore
 
 # DATA
 ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
-```
 
-    ## Rows: 160236 Columns: 7
-
-    ## -- Column specification --------------------------------------------------------
-    ## Delimiter: ","
-    ## chr (4): species_query, strain_query, species_ref, strain_ref
-    ## dbl (3): ANI, bidirectional_fragment_mapping, total_query_fragment
-
-    ## 
-    ## i Use `spec()` to retrieve the full column specification for this data.
-    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
-
-``` r
 #
 # Get the percentage of common spacers between two arrays
 #
@@ -3419,11 +3405,8 @@ arrays_pairs_tbl <- tibble(Array1 = arrays_pairs[1,], Array2 = arrays_pairs[2,])
   #mutate(perc_shared = perc_shared * 100) %>% 
   mutate(nucleotide_diversity = (bidirectional_fragment_mapping * 1000)*(1/ANI)) %>% 
   mutate(turnover_rate = nucleotide_diversity/unique_sp)
-```
 
-    ## `summarise()` has grouped output by 'Organism1', 'Strain1', 'Array1', 'Organism2', 'Strain2', 'Array2', 'ANI', 'bidirectional_fragment_mapping', 'total_query_fragment'. You can override using the `.groups` argument.
 
-``` r
 # Forgot this... add in summarise for next run
 arrays_pairs_tbl <- arrays_pairs_tbl %>% 
   left_join(CRISPRscope_tbl_26 %>% select(ArrayID, Cas_subtype) %>% distinct(), by = c("Array1" = "ArrayID")) %>% 
@@ -3437,21 +3420,24 @@ arrays_pairs_tbl %>% write_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_per
 colnames(arrays_pairs_tbl)
 ```
 
-    ##  [1] "Organism1"                      "Strain1"                       
-    ##  [3] "Array1"                         "Cas_subtype1"                  
-    ##  [5] "Organism2"                      "Strain2"                       
-    ##  [7] "Array2"                         "Cas_subtype2"                  
-    ##  [9] "ANI"                            "bidirectional_fragment_mapping"
-    ## [11] "total_query_fragment"           "mean_notshared"                
-    ## [13] "numb_shared"                    "perc_shared"                   
-    ## [15] "unique_sp"                      "nucleotide_diversity"          
-    ## [17] "turnover_rate"
-
 Recreate figure 2A (ANI vs Shared spacers)
 
 ``` r
-# arrays_pairs_tbl <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
+arrays_pairs_tbl <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
+```
 
+    ## Rows: 262422 Columns: 17
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (9): Organism1, Strain1, Array1, Cas_subtype1, Organism2, Strain2, Array...
+    ## dbl (8): ANI, bidirectional_fragment_mapping, total_query_fragment, mean_not...
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 data_plot <- arrays_pairs_tbl %>% select(Organism1, ANI, perc_shared) %>% 
   left_join(species_colors, by=c("Organism1" = "Species")) %>% 
   filter(ANI > 95 ) %>% 
@@ -3558,7 +3544,7 @@ ggsave(
 plot_per_species
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-69-1.png)<!-- -->
+![](./Figs/unnamed-chunk-69-1.png)<!-- -->
 
 \#———————————————- \# ANI and Turnover Rate / strain
 
@@ -3574,7 +3560,20 @@ shared spacers
 
 ``` r
 ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
+```
 
+    ## Rows: 160236 Columns: 7
+
+    ## -- Column specification --------------------------------------------------------
+    ## Delimiter: ","
+    ## chr (4): species_query, strain_query, species_ref, strain_ref
+    ## dbl (3): ANI, bidirectional_fragment_mapping, total_query_fragment
+
+    ## 
+    ## i Use `spec()` to retrieve the full column specification for this data.
+    ## i Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 # # Function to get 
 # get_pair_nbof_shared_seq <- function(strain1str, strain2str){
 # 
@@ -4014,7 +4013,7 @@ ANI_CUSTOM_PLOT_1 <-
 ANI_CUSTOM_PLOT_1
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-76-1.png)<!-- -->
+![](./Figs/unnamed-chunk-77-1.png)<!-- -->
 
 Within species / per array comparison: nucleotide diversity vs
 turnover\_rate
@@ -4089,7 +4088,7 @@ ANI_CUSTOM_PLOT_2 <-
 ANI_CUSTOM_PLOT_2
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-77-1.png)<!-- -->
+![](./Figs/unnamed-chunk-78-1.png)<!-- -->
 
 ``` r
 cols <- as.character(ANI_CUSTOM_PLOT_DATA$col)
@@ -4161,7 +4160,7 @@ ANI_CUSTOM_PLOT_3 <-
 ANI_CUSTOM_PLOT_3
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-78-1.png)<!-- -->
+![](./Figs/unnamed-chunk-79-1.png)<!-- -->
 
 \#———————————————-
 
@@ -4257,7 +4256,7 @@ plt_nb_repeat %>%
   xlab("Repeat count per strain")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-79-1.png)<!-- -->
+![](./Figs/unnamed-chunk-80-1.png)<!-- -->
 
 \#\#
 <p>
@@ -4350,7 +4349,7 @@ plt_nb_array %>%
   xlab("Array count per strain")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-80-1.png)<!-- -->
+![](./Figs/unnamed-chunk-81-1.png)<!-- -->
 
 \#———————————————-
 
@@ -4703,7 +4702,7 @@ ggsave(
 plot_dr_cluster_x
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-83-1.png)<!-- -->
+![](./Figs/unnamed-chunk-84-1.png)<!-- -->
 
 ## Tileplot clusterx 80
 
@@ -4814,7 +4813,7 @@ ggsave(
 plot_dr_cluster_y
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-85-1.png)<!-- -->
+![](./Figs/unnamed-chunk-86-1.png)<!-- -->
 
 ## cluster80 percentage identity.
 
@@ -4851,7 +4850,7 @@ plot_repeat_identity_density <- CRISPRscope_tbl_26 %>% select(ArrayID, cluster_r
 plot_repeat_identity_density
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-86-1.png)<!-- -->
+![](./Figs/unnamed-chunk-87-1.png)<!-- -->
 
 ``` r
   ggsave(
@@ -4938,7 +4937,7 @@ plot_ <- plot_sp_cluster_order %>%
 plot_
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-87-1.png)<!-- -->
+![](./Figs/unnamed-chunk-88-1.png)<!-- -->
 
 \#\#
 <p>
@@ -5017,7 +5016,7 @@ plot_ <- plot_sp_cluster_order %>%
 plot_
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-88-1.png)<!-- -->
+![](./Figs/unnamed-chunk-89-1.png)<!-- -->
 
 # <stat> spacers numbers
 
@@ -5480,7 +5479,7 @@ species_combination.spacer_shared_100 %>%
   xlab("Shared spacers (100% identity clusters)")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-93-1.png)<!-- -->
+![](./Figs/unnamed-chunk-94-1.png)<!-- -->
 
 ``` r
 species_combination.spacer_shared_80 %>% ggplot(aes(x=x, y=y,fill=shared_spacer)) +
@@ -5533,7 +5532,7 @@ species_combination.spacer_shared_80 %>% ggplot(aes(x=x, y=y,fill=shared_spacer)
   xlab("Shared spacers (80% identity clusters)")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-93-2.png)<!-- -->
+![](./Figs/unnamed-chunk-94-2.png)<!-- -->
 
 \#—————————– \# Rhamnosus case
 <p>
@@ -5605,7 +5604,7 @@ plot_ <- plot_sp_cluster_order %>%
 plot_
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-94-1.png)<!-- -->
+![](./Figs/unnamed-chunk-95-1.png)<!-- -->
 
 \#———————————————- \# Topology of shared spacers Where spacers found in
 more than one strain
@@ -5671,7 +5670,7 @@ cas_plot <- CRISPRscope_tbl_26 %>%
 cas_plot
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-95-1.png)<!-- -->
+![](./Figs/unnamed-chunk-96-1.png)<!-- -->
 
 ``` r
 wplot <- CRISPRscope_tbl_26 %>% 
@@ -5728,7 +5727,7 @@ wplot <- CRISPRscope_tbl_26 %>%
 wplot
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-95-2.png)<!-- -->
+![](./Figs/unnamed-chunk-96-2.png)<!-- -->
 
 ``` r
 ggsave(
@@ -5851,7 +5850,7 @@ plt_ori <- orientation_organisme_plot %>%
 plt_ori
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-96-1.png)<!-- -->
+![](./Figs/unnamed-chunk-97-1.png)<!-- -->
 
 ``` r
 ggsave(
@@ -5871,7 +5870,7 @@ CRISPRscope_tbl_26 %>% group_by(Cas_subtype) %>% dplyr::count(Orientation) %>%
   geom_bar(stat="identity") 
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-97-1.png)<!-- -->
+![](./Figs/unnamed-chunk-98-1.png)<!-- -->
 
 # ——————————
 
@@ -6248,7 +6247,7 @@ sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count)) +
   scale_y_continuous(trans = "log10")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-101-1.png)<!-- -->
+![](./Figs/unnamed-chunk-102-1.png)<!-- -->
 
 ``` r
 #sorted_results_1 %>% mutate(replst = rep(Editdistance,count))
@@ -6261,7 +6260,7 @@ sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
   stat_function(aes_(color="red"),fun = dnorm, n = 10000, args = list(mean = mean_all, sd = sd_all))
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-101-2.png)<!-- -->
+![](./Figs/unnamed-chunk-102-2.png)<!-- -->
 
 ### bigger than 35
 
@@ -6512,7 +6511,7 @@ sorted_results_2 %>%
     ## Warning: Multiple drawing groups in `geom_function()`. Did you use the correct
     ## `group`, `colour`, or `fill` aesthetics?
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-104-1.png)<!-- -->
+![](./Figs/unnamed-chunk-105-1.png)<!-- -->
 
 ``` r
 # 
@@ -6783,7 +6782,7 @@ sorted_results_30 %>%
   stat_function(aes_(color="30s"),fun = dnorm, n = 10000, args = list(mean = mean30, sd = sd30)) 
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-107-1.png)<!-- -->
+![](./Figs/unnamed-chunk-108-1.png)<!-- -->
 
 ``` r
 sorted_results_not30 %>% 
@@ -6793,7 +6792,7 @@ sorted_results_not30 %>%
   stat_function(aes_(color="Not30"),fun = dnorm, n = 10000, args = list(mean = meannot30, sd = sdnot30))
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-107-2.png)<!-- -->
+![](./Figs/unnamed-chunk-108-2.png)<!-- -->
 
 ``` r
 sorted_results_3 %>% 
@@ -6812,7 +6811,7 @@ sorted_results_3 %>%
     ## Warning: Multiple drawing groups in `geom_function()`. Did you use the correct
     ## `group`, `colour`, or `fill` aesthetics?
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-107-3.png)<!-- -->
+![](./Figs/unnamed-chunk-108-3.png)<!-- -->
 
 ``` r
 pnorm(5, mean=mean30, sd=sd30)
@@ -6858,7 +6857,7 @@ p1 <- sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
 p1
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-108-1.png)<!-- -->
+![](./Figs/unnamed-chunk-109-1.png)<!-- -->
 
 numbers: How many spacers have edit &lt; 6 ?
 
@@ -6941,7 +6940,7 @@ p_gap <- ggpubr::ggarrange(p3, p2, ncol = 1, nrow = 2, align = c("v"))
 p_gap
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-111-1.png)<!-- -->
+![](./Figs/unnamed-chunk-112-1.png)<!-- -->
 
 Take the big graph and darken the 0-10 area
 
@@ -6967,7 +6966,7 @@ pgrand <- sorted_results_1 %>%
 pgrand
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-112-1.png)<!-- -->
+![](./Figs/unnamed-chunk-113-1.png)<!-- -->
 
 Combine plots:
 
@@ -6979,7 +6978,7 @@ final_edit_plot <- grid.arrange(p_gap,pgrand,
              )
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-113-1.png)<!-- -->
+![](./Figs/unnamed-chunk-114-1.png)<!-- -->
 
 ``` r
 final_edit_plot
@@ -7012,7 +7011,7 @@ sorted_results_1 %>% ggplot(aes(x=Editdistance, y=count/total_obs)) +
   stat_function(aes_(color="short"),fun = dnorm, n = 10000, args = list(mean = meanshort_over10, sd = sdshort_over10)) 
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-114-1.png)<!-- -->
+![](./Figs/unnamed-chunk-115-1.png)<!-- -->
 
 ``` r
 sum(sorted_results_1 %>% filter(Editdistance <= 6) %>% select(count) %>% unlist())
@@ -7117,8 +7116,8 @@ ggsave(
 plt
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-116-1.png)<!-- -->
-\# Density plot ANI EDIT&lt;6
+![](./Figs/unnamed-chunk-117-1.png)<!-- --> \# Density plot ANI
+EDIT&lt;6
 
 ``` r
 EDIT_VS_ANI_2 <- inner_join(merged_slices_custom_dist6, 
@@ -7138,7 +7137,7 @@ EDIT_VS_ANI_2 %>% filter(EDIT > 1) %>% select(ANI) %>%
   ggtitle("ANI VS EDIT of shared spacers. 1 < EDIT < 6 ")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-117-1.png)<!-- -->
+![](./Figs/unnamed-chunk-118-1.png)<!-- -->
 
 ``` r
 # IN SUPPLEMENTARY FIG. 
@@ -7150,7 +7149,7 @@ EDIT_VS_ANI_2 %>% select(ANI) %>%
   ylab("Density")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-117-2.png)<!-- -->
+![](./Figs/unnamed-chunk-118-2.png)<!-- -->
 
 ``` r
 ptot <- EDIT_VS_ANI_2 %>% summarise(n = n()) %>% select(n) %>% unlist()
@@ -7176,7 +7175,7 @@ EDIT_VS_ANI_2 %>% select(ANI, EDIT) %>% filter(EDIT > 1) %>%
   ggtitle("ANI VS EDIT of shared spacers. 1 < EDIT < 6 ")
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-117-3.png)<!-- -->
+![](./Figs/unnamed-chunk-118-3.png)<!-- -->
 
 # ————————-
 
@@ -7258,7 +7257,11 @@ edit6_sequences_reordered <- edit6_sequences %>%
   unnest(y.new) %>% select(-seq2) %>% dplyr::rename(seq2=y.new)
 ```
 
+Warning: indel function problems
+
 ``` r
+require(Biostrings)
+
 set1 <- DNAStringSet(edit6_sequences_reordered %>% select(seq1) %>% unlist())
 set2 <- DNAStringSet(edit6_sequences_reordered %>% select(seq2) %>% unlist())
 
@@ -7283,7 +7286,7 @@ for ( i in 1:15){#(length(set1) - 1 )) {
   
   #---- deletions
   
-  deletions <- indel(pattern(align))
+  deletions <- Biostrings::indel(Biostrings::pattern(align))
   starts = as.list(start(deletions))
   ends = as.list(end(deletions))
   
@@ -7292,141 +7295,14 @@ for ( i in 1:15){#(length(set1) - 1 )) {
   deletions_ <- deletions_ %>% bind_rows(tmp)
   
   #---- insertions
-  insertions <- indel(subject(align))
+  insertions <- Biostrings::indel(Biostrings::subject(align))
   starts = as.list(start(insertions))
   ends = as.list(end(insertions))
   
   tmp = tibble(start = c(starts %>% unlist()), end = c(ends %>% unlist()))
   insertions_ <- insertions_ %>% bind_rows(tmp)
 }
-```
 
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1            6          6                T              7
-    ## 2         1           24         24                T              7
-    ## 3         1           27         27                G              7
-    ## 4         1           30         30                C              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1            6          6                C              7
-    ## 2           24         24                C              7
-    ## 3           27         27                T              7
-    ## 4           30         30                A              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1            5          5                T              7
-    ## 2         1           16         16                G              7
-    ## 3         1           22         22                T              7
-    ## 4         1           25         25                C              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1            4          4                A              7
-    ## 2           15         15                A              7
-    ## 3           21         21                C              7
-    ## 4           24         24                T              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1           18         18                C              7
-    ## 2         1           24         24                T              7
-    ## 3         1           27         27                T              7
-    ## 4         1           29         29                A              7
-    ## 5         1           30         30                T              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1           18         18                T              7
-    ## 2           24         24                C              7
-    ## 3           27         27                C              7
-    ## 4           29         29                T              7
-    ## 5           30         30                C              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1           12         12                T              7
-    ## 2         1           30         30                C              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1           12         12                A              7
-    ## 2           30         30                T              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1           15         15                C              7
-    ## 2         1           17         17                A              7
-    ## 3         1           29         29                G              7
-    ## 4         1           31         31                G              7
-    ## 5         1           32         32                A              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1           15         15                A              7
-    ## 2           17         17                G              7
-    ## 3           28         28                T              7
-    ## 4           30         30                C              7
-    ## 5           31         31                G              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1           10         10                T              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1            9          9                G              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1            2          2                G              7
-    ## 2         1           14         14                G              7
-    ## 3         1           23         23                T              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1            4          4                A              7
-    ## 2           16         16                A              7
-    ## 3           25         25                C              7
-    ## [1] PatternId        PatternStart     PatternEnd       PatternSubstring
-    ## [5] PatternQuality   SubjectStart     SubjectEnd       SubjectSubstring
-    ## [9] SubjectQuality  
-    ## <0 lignes> (ou 'row.names' de longueur nulle)
-    ## [1] PatternId        PatternStart     PatternEnd       PatternSubstring
-    ## [5] PatternQuality   SubjectStart     SubjectEnd       SubjectSubstring
-    ## [9] SubjectQuality  
-    ## <0 lignes> (ou 'row.names' de longueur nulle)
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1           24         24                A              7
-    ## 2         1           25         25                A              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1           24         24                G              7
-    ## 2           25         25                G              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1           30         30                T              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1           30         30                A              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1           14         14                G              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1           17         17                T              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1            1          1                C              7
-    ## 2         1            5          5                G              7
-    ## 3         1           13         13                A              7
-    ## 4         1           18         18                G              7
-    ## 5         1           23         23                T              7
-    ## 6         1           30         30                T              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1            1          1                A              7
-    ## 2            5          5                A              7
-    ## 3           13         13                G              7
-    ## 4           18         18                A              7
-    ## 5           23         23                A              7
-    ## 6           30         30                C              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1            2          2                A              7
-    ## 2         1            9          9                A              7
-    ## 3         1           14         14                C              7
-    ## 4         1           19         19                T              7
-    ## 5         1           27         27                C              7
-    ## 6         1           31         31                G              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1            2          2                G              7
-    ## 2            9          9                T              7
-    ## 3           14         14                T              7
-    ## 4           19         19                C              7
-    ## 5           27         27                T              7
-    ## 6           31         31                T              7
-    ##   PatternId PatternStart PatternEnd PatternSubstring PatternQuality
-    ## 1         1            3          3                G              7
-    ## 2         1           11         11                A              7
-    ## 3         1           16         16                G              7
-    ## 4         1           21         21                T              7
-    ## 5         1           28         28                T              7
-    ##   SubjectStart SubjectEnd SubjectSubstring SubjectQuality
-    ## 1            5          5                A              7
-    ## 2           13         13                G              7
-    ## 3           18         18                A              7
-    ## 4           23         23                A              7
-    ## 5           30         30                C              7
-
-``` r
 # 
 # plot_mismatch <- mismatches_ %>% 
 #   ggplot(aes(x = mismatch)) +
@@ -7470,21 +7346,9 @@ plot_in <- insertions_ %>% gather(Insertion) %>%
 # )
 
 plot_in
-```
-
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-119-1.png)<!-- -->
-
-``` r
 plot_del
-```
-
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-119-2.png)<!-- -->
-
-``` r
 plot_mismatch_tbl
 ```
-
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-119-3.png)<!-- -->
 
 ## By cas-types
 
@@ -7562,7 +7426,7 @@ indel_position <- function(set1, set2){
     
     #---- deletions
     
-    deletions <- indel(pattern(align))
+    deletions <- Biostrings::indel(Biostrings::pattern(align))
     starts = as.list(start(deletions))
     ends = as.list(end(deletions))
     
@@ -7570,7 +7434,7 @@ indel_position <- function(set1, set2){
     deletions_ <- deletions_ %>% bind_rows(tmp)
     
     #---- insertions
-    insertions <- indel(subject(align))
+    insertions <- Biostrings::indel(Biostrings::subject(align))
     starts = as.list(start(insertions))
     ends = as.list(end(insertions))
     
@@ -7642,7 +7506,7 @@ figure <- grid.arrange(type_1_plots[[1]], type_1_plots[[2]], type_1_plots[[3]],
              ncol = 3, nrow = 1)
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-121-1.png)<!-- -->
+![](./Figs/unnamed-chunk-122-1.png)<!-- -->
 
 ``` r
 figure <- annotate_figure(figure,
@@ -7668,7 +7532,7 @@ ggsave(
 figure
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-121-2.png)<!-- -->
+![](./Figs/unnamed-chunk-122-2.png)<!-- -->
 
 ``` r
 type_2_plots <- indel_position(set1_t2, set2_t2)
@@ -7706,7 +7570,7 @@ figure <- grid.arrange(type_2_plots[[1]], type_2_plots[[2]], type_2_plots[[3]],
              ncol = 3, nrow = 1)
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-122-1.png)<!-- -->
+![](./Figs/unnamed-chunk-123-1.png)<!-- -->
 
 ``` r
 figure <- annotate_figure(figure,
@@ -7731,7 +7595,7 @@ ggsave(
 figure
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-122-2.png)<!-- -->
+![](./Figs/unnamed-chunk-123-2.png)<!-- -->
 
 ``` r
 type_3_plots <- indel_position(set1_t3, set2_t3)
@@ -7769,7 +7633,7 @@ figure <- grid.arrange(type_3_plots[[1]], type_3_plots[[2]], type_3_plots[[3]],
              ncol = 3, nrow = 1)
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-123-1.png)<!-- -->
+![](./Figs/unnamed-chunk-124-1.png)<!-- -->
 
 ``` r
 figure <- annotate_figure(figure,
@@ -7793,7 +7657,7 @@ ggsave(
 figure
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-123-2.png)<!-- -->
+![](./Figs/unnamed-chunk-124-2.png)<!-- -->
 
 # ————————-
 
@@ -7864,7 +7728,7 @@ plt_filtered <- EDIT_VS_ANI_VS_LEN %>% filter(ANI_100 > 1.9) %>% filter(ANI_100 
 plt_filtered
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-124-1.png)<!-- -->
+![](./Figs/unnamed-chunk-125-1.png)<!-- -->
 
 ``` r
 ggsave(
@@ -7890,7 +7754,7 @@ plt
 
     ## Warning: Removed 38714 rows containing missing values (geom_point).
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-124-2.png)<!-- -->
+![](./Figs/unnamed-chunk-125-2.png)<!-- -->
 
 Mean and sd of the distance of the above region of interest, where
 Edit\_len = 0.
@@ -7921,7 +7785,7 @@ EDIT_VS_ANI_VS_LEN_V2 %>% ggplot(aes(x=mean_dist, y=sd_dist)) +
   geom_point()
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-125-1.png)<!-- -->
+![](./Figs/unnamed-chunk-126-1.png)<!-- -->
 
 ## Comparison with core genome diversity (?)
 
@@ -7982,7 +7846,7 @@ EDIT_VS_ANI_VS_LEN_V3
 plt3
 ```
 
-![](1_CRISPRscope_genomic_analysis_phase2_files/figure-gfm/unnamed-chunk-126-1.png)<!-- -->
+![](./Figs/unnamed-chunk-127-1.png)<!-- -->
 
 \#— \# Function - facet zoom 2
 

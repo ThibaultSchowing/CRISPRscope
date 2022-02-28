@@ -10,6 +10,7 @@ always_allow_html: true
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.path='./Figs3/')
 ```
 
 # Comparison between CRISPRscope and CRISPRscope_meta data
@@ -52,11 +53,13 @@ library(ggpubr)
 
 ## Directories
 
+Change here to your local directories
+
 ```{r}
 
 repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
-google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
-data_folder <- "C:/Users/thsch/Desktop/0_data"
+google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG" # Output director for saved images
+data_folder <- "C:/Users/thsch/Desktop/0_data" # Main data repository, output files from the cluster / notebooks
 
 ```
 
@@ -65,7 +68,7 @@ data_folder <- "C:/Users/thsch/Desktop/0_data"
 
 # Import data
 ```{r}
-# Restore the objects
+# Restore the exported objects from 1 and 2.1
 
 CRISPRscope_tbl_26 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
 CRISPRscope_tbl_185 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
@@ -74,6 +77,7 @@ id_data = readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/id_data.r
 
 
 
+# ID - publication matching
 renameSamples <- function(imput_tibble) {
   a <- imput_tibble %>%
     mutate(ProjectID = replace(ProjectID, ProjectID == "PRJEB32768", "Walsh et al. 2020")) %>% 
@@ -168,7 +172,7 @@ species_levels_21_abrv <- list("Lhelv", "Laci", "Ldel", "Lrham", "Lcas", "Lcur",
 
 
 #----------------------
-#TODO Venn diagram 80% similarity clustering
+# Venn diagram 80% similarity clustering
 
 ```{r}
 # Read 80% cluster files

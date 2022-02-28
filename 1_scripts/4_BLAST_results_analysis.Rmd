@@ -1,6 +1,11 @@
 ---
 title: "BLAST_results_analysis"
-output: html_document
+author: "Thibault Schowing"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  github_document:
+    toc: true
+always_allow_html: true
 ---
 
 ```{r setup, include=FALSE}

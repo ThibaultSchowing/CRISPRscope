@@ -10,6 +10,7 @@ always_allow_html: true
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.path='./Figs/')
 ```
 
 Second phase. 
@@ -2230,7 +2231,7 @@ Filter the data by removing all strain pairs that do not share spacers at all an
 
 
 ```{r fig.height=8, fig.width=15}
-ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair2.csv", sep="")) # 21 species
+ANI_Shared_spacers_strain_pair <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_Shared_spacers_strain_pair2.csv", sep=""), lazy = FALSE) # 21 species
 
 
 
@@ -2254,7 +2255,7 @@ ANI_Shared_spacers_strain_pair_filtered %>%
 
 ```{r fig.height=6, fig.width=10}
 library(stats)
-ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep="")) %>% 
+ANI_Shared_spacers_strain_pair_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_data_plot3.csv", sep=""), lazy = FALSE) %>% 
   #filter(species_query == "Lacticaseibacillus_rhamnosus") %>% 
   mutate(species_query = gsub("_", " ", species_query))
 
@@ -2814,7 +2815,7 @@ Recreate figure 2A (ANI vs Shared spacers)
 
 
 ```{r, fig.height=8, fig.width=12}
-# arrays_pairs_tbl <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
+arrays_pairs_tbl <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_perArray_sharedSpacers.csv", sep=""))
 
 data_plot <- arrays_pairs_tbl %>% select(Organism1, ANI, perc_shared) %>% 
   left_join(species_colors, by=c("Organism1" = "Species")) %>% 
@@ -2945,10 +2946,14 @@ what you would need is:
       --> multiple this bp length with the invert of the ANI to get the basepair difference between the two genomes). 
 2. translate the % of shared spacers into a number of shared spacers
 
-```{r, eval=FALSE}
-
-
+```{r}
 ANI_merged_filtered <- read_csv(file = paste(data_folder, "/IMPORT_EXPORT/ANI_merged_filtered.csv", sep=""))
+
+```
+
+
+```{r, eval=FALSE, echo=T}
+
 
 # # Function to get 
 # get_pair_nbof_shared_seq <- function(strain1str, strain2str){

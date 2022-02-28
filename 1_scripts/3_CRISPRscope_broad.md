@@ -1,7 +1,7 @@
 CRISPRscope: comparison
 ================
 Thibault Schowing
-07 décembre, 2021
+28 février, 2022
 
 -   [Comparison between CRISPRscope and CRISPRscope\_meta
     data](#comparison-between-crisprscope-and-crisprscope_meta-data)
@@ -133,16 +133,18 @@ library(ggpubr)
 
 ## Directories
 
+Change here to your local directories
+
 ``` r
 repository <- "C:/Users/thsch/Desktop/CRISPRscope" # Main git repository. 
-google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG"
-data_folder <- "C:/Users/thsch/Desktop/0_data"
+google_drive_folder <- "G:/Mon Drive/0_Documents/1_Emploi/E_StageAgroscope/CRISPRscope_writing/IMG" # Output director for saved images
+data_folder <- "C:/Users/thsch/Desktop/0_data" # Main data repository, output files from the cluster / notebooks
 ```
 
 # Import data
 
 ``` r
-# Restore the objects
+# Restore the exported objects from 1 and 2.1
 
 CRISPRscope_tbl_26 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL26.rds", sep=""))
 CRISPRscope_tbl_185 <- readRDS(file = paste(data_folder, "/CRISPRscope_results/export_complete_SEL185.rds", sep=""))
@@ -151,6 +153,7 @@ id_data = readRDS(file = paste(data_folder, "/CRISPRscope_meta_results/id_data.r
 
 
 
+# ID - publication matching
 renameSamples <- function(imput_tibble) {
   a <- imput_tibble %>%
     mutate(ProjectID = replace(ProjectID, ProjectID == "PRJEB32768", "Walsh et al. 2020")) %>% 
@@ -238,7 +241,7 @@ species_levels_21_abrv <- list("Lhelv", "Laci", "Ldel", "Lrham", "Lcas", "Lcur",
      "Stherm", "Msciu", "Sequo", "Bani", "Cacn", "Pfreu", "Ccas")
 ```
 
-\#———————- \#TODO Venn diagram 80% similarity clustering
+\#———————- \# Venn diagram 80% similarity clustering
 
 ``` r
 # Read 80% cluster files
@@ -284,7 +287,7 @@ Clusters0_8_CRISPRscope_ALL_REPEATS %>%
   ylab("Density") 
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-6-1.png)<!-- -->
 
 ``` r
 Clusters0_8_CRISPRscope_ALL_SPACERS %>% 
@@ -296,7 +299,7 @@ Clusters0_8_CRISPRscope_ALL_SPACERS %>%
   ylab("Density") 
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->
+![](./Figs3/unnamed-chunk-6-2.png)<!-- -->
 
 ``` r
 # Add spacer and repeat 80% clusters to tmp datasets
@@ -981,8 +984,8 @@ data_coverage %>%
   ylab("Spacer reads coverage")
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
-\#\# Boxplor coverages genomes groups
+![](./Figs3/unnamed-chunk-20-1.png)<!-- --> \#\# Boxplor coverages
+genomes groups
 
 Sets of spacers (distinct clusters 100% identity)
 
@@ -1154,7 +1157,7 @@ ggsave(
 plt
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-22-1.png)<!-- -->
 
 ## Export metagenome-only repeats for blast
 
@@ -1339,7 +1342,7 @@ t %>% ggplot(aes(x=category, y=Cas_subtype)) +
   geom_tile()
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-24-1.png)<!-- -->
 
 \#———————————————-
 
@@ -1742,10 +1745,10 @@ bind_rows(metagenomic_blast_count, genomic_blast_count) %>% distinct() %>% count
     ## # A tibble: 4 x 2
     ##   final_hit     n
     ##   <chr>     <int>
-    ## 1 Bacterial  2254
+    ## 1 Bacterial  2295
     ## 2 No hit    12261
     ## 3 Plasmid     835
-    ## 4 Viral      7936
+    ## 4 Viral      7895
 
 ``` r
 viral = 7936
@@ -1858,7 +1861,7 @@ bars$heights[1] <- unit(1, "null")
 blast_meta_plot
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-31-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-31-1.png)<!-- -->
 
 ### Genomes
 
@@ -1918,7 +1921,7 @@ bars$heights[1] <- unit(1, "null")
 blast_genomes_plot
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-32-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-32-1.png)<!-- -->
 
 ### Combined plots
 
@@ -2023,7 +2026,7 @@ plt_gm_blast <- hit_plt_2 %>%
 plt_gm_blast
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-34-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-34-1.png)<!-- -->
 
 ``` r
 ggsave(
@@ -2170,7 +2173,7 @@ BLAST_clusters_bacteria <- CRISPRscope_blast_cluster_hit_type_2 %>% filter(final
 BLASTnr_sseqid_qseqid %>% filter(qseqid %in% BLAST_clusters_bacteria$cluster)
 ```
 
-    ## # A tibble: 1,452 x 3
+    ## # A tibble: 1,542 x 3
     ##    DB    accessionID    qseqid
     ##    <chr> <chr>           <dbl>
     ##  1 gb    AAV61121.1         26
@@ -2183,7 +2186,7 @@ BLASTnr_sseqid_qseqid %>% filter(qseqid %in% BLAST_clusters_bacteria$cluster)
     ##  8 ref   XP_005317372.1    138
     ##  9 ref   WP_090400433.1    139
     ## 10 ref   WP_090400433.1    140
-    ## # ... with 1,442 more rows
+    ## # ... with 1,532 more rows
 
 ``` r
 # 11'502 have no protein matched / retrieved or eggnong annotation. 
@@ -2227,7 +2230,7 @@ bactHits_protein_annot <- BLASTnr_sseqid_qseqid %>% filter(qseqid %in% BLAST_clu
 bactHits_protein_annot
 ```
 
-    ## # A tibble: 724 x 23
+    ## # A tibble: 814 x 23
     ##    DB    accessionID  qseqid seed_ortholog     evalue score eggNOG_OGs          
     ##    <chr> <chr>         <dbl> <chr>              <dbl> <dbl> <chr>               
     ##  1 emb   CDF01716.1       76 1046629.Ssal_0~ 2.2e-199  701. COG0201@1|root,COG0~
@@ -2240,7 +2243,7 @@ bactHits_protein_annot
     ##  8 gb    OAW71700.1      186 435838.HMPREF0~ 9.1e- 22  110. COG3266@1|root,COG3~
     ##  9 ref   WP_15596784~    220 279808.SH2426   0        1183. COG3147@1|root,COG4~
     ## 10 ref   WP_15596784~    221 279808.SH2426   0        1183. COG3147@1|root,COG4~
-    ## # ... with 714 more rows, and 16 more variables: max_annot_lvl <chr>,
+    ## # ... with 804 more rows, and 16 more variables: max_annot_lvl <chr>,
     ## #   COG_category <chr>, Description <chr>, Preferred_name <chr>, GOs <chr>,
     ## #   EC <chr>, KEGG_ko <chr>, KEGG_Pathway <chr>, KEGG_Module <chr>,
     ## #   KEGG_Reaction <chr>, KEGG_rclass <chr>, BRITE <chr>, KEGG_TC <chr>,
@@ -2264,7 +2267,7 @@ bactHits_protein_annot %>% distinct() %>%
   select(Level) %>% distinct() 
 ```
 
-    ## # A tibble: 46 x 1
+    ## # A tibble: 53 x 1
     ##    Level              
     ##    <chr>              
     ##  1 Bacilli            
@@ -2277,7 +2280,7 @@ bactHits_protein_annot %>% distinct() %>%
     ##  8 Metazoa            
     ##  9 Fungi              
     ## 10 Planctomycetes     
-    ## # ... with 36 more rows
+    ## # ... with 43 more rows
 
 ``` r
 # Create / export a list of bacterial qseqid to mark as Viral earlier (loop back)
@@ -2352,13 +2355,13 @@ ggsave(
 eggnog_plt_taxlevel
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-40-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-40-1.png)<!-- -->
 
 ``` r
 bactHits_protein_annot
 ```
 
-    ## # A tibble: 724 x 23
+    ## # A tibble: 814 x 23
     ##    DB    accessionID  qseqid seed_ortholog     evalue score eggNOG_OGs          
     ##    <chr> <chr>         <dbl> <chr>              <dbl> <dbl> <chr>               
     ##  1 emb   CDF01716.1       76 1046629.Ssal_0~ 2.2e-199  701. COG0201@1|root,COG0~
@@ -2371,7 +2374,7 @@ bactHits_protein_annot
     ##  8 gb    OAW71700.1      186 435838.HMPREF0~ 9.1e- 22  110. COG3266@1|root,COG3~
     ##  9 ref   WP_15596784~    220 279808.SH2426   0        1183. COG3147@1|root,COG4~
     ## 10 ref   WP_15596784~    221 279808.SH2426   0        1183. COG3147@1|root,COG4~
-    ## # ... with 714 more rows, and 16 more variables: max_annot_lvl <chr>,
+    ## # ... with 804 more rows, and 16 more variables: max_annot_lvl <chr>,
     ## #   COG_category <chr>, Description <chr>, Preferred_name <chr>, GOs <chr>,
     ## #   EC <chr>, KEGG_ko <chr>, KEGG_Pathway <chr>, KEGG_Module <chr>,
     ## #   KEGG_Reaction <chr>, KEGG_rclass <chr>, BRITE <chr>, KEGG_TC <chr>,
@@ -2428,7 +2431,7 @@ ggsave(
 eggnog_plt_COG
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-41-1.png)<!-- -->
 
 CRISPRscope\_blast\_cluster\_hit\_type\_2 contains cluster / type -&gt;
 subset type == “Bacterial” -&gt; check in eggnog results
@@ -2682,7 +2685,7 @@ cog_categories_sum_T %>%
   ylab("")
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-42-1.png)<!-- -->
 
 ``` r
 # Some verifications
@@ -2690,7 +2693,7 @@ cog_categories_sum_T %>%
 sum( cog_categories_sum_T$n) # 859 
 ```
 
-    ## [1] 769
+    ## [1] 859
 
 \#———————————————-
 
@@ -2772,7 +2775,7 @@ ggsave(
 BLAST_castype_hit_plot
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-43-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-43-1.png)<!-- -->
 
 average plasmid per subtype
 
@@ -2785,11 +2788,11 @@ d %>% count(cas, final_hit) %>% group_by(cas) %>% mutate(total = sum(n)) %>% gro
     ## # A tibble: 5 x 3
     ##   final_hit average_nbspacer_type sd_nbspacer_type
     ##   <chr>                     <dbl>            <dbl>
-    ## 1 Bacterial                0.120            0.0805
+    ## 1 Bacterial                0.121            0.0801
     ## 2 CRISPR                   0.106            0.0542
     ## 3 No hit                   0.577            0.231 
     ## 4 Plasmid                  0.0555           0.0561
-    ## 5 Viral                    0.330            0.0709
+    ## 5 Viral                    0.329            0.0709
 
 \#TODO relative abundance of y axis. Per type. stacked barchart / all in
 one figure !
@@ -2863,14 +2866,14 @@ bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>%
 
     ## Warning: position_stack requires non-overlapping x intervals
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-46-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-46-1.png)<!-- -->
 
 ``` r
 bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>% 
   filter(qseqid %in% CRISPRscope_blast_cluster_hit_type_2$cluster) %>% ggplot(aes(x=mismatch)) + geom_bar(width = 0.3)
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-46-2.png)<!-- -->
+![](./Figs3/unnamed-chunk-46-2.png)<!-- -->
 
 ``` r
 bind_rows(CRISPRblast_IMGVR_2, CRISPRblast_nt_2, CRISPRblast_PLSDB_2) %>% 
@@ -3120,7 +3123,7 @@ aaaplt + bbbplt +
   plot_layout(widths =  c(1,1))
 ```
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-50-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-50-1.png)<!-- -->
 
 ``` r
 # 
@@ -3155,7 +3158,7 @@ CRISPRscope_tbl_26 %>% select(Organism, Strain, cluster_spacer_identity) %>%
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-52-1.png)<!-- -->
 
 # Fractions of vOTU - metagenomes
 
@@ -3833,7 +3836,7 @@ plot
 
     ## Warning: Removed 5343952 rows containing non-finite values (stat_poly_eq).
 
-![](3_CRISPRscope_broad_files/figure-gfm/unnamed-chunk-57-1.png)<!-- -->
+![](./Figs3/unnamed-chunk-57-1.png)<!-- -->
 
 # Mesophilic vs thermophilic
 
