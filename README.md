@@ -1,6 +1,6 @@
-# CRISPRscope: A comparative analysis on CRISPR diversity of cheese related genomes and metagenomes
+# Extensive diversity and rapid turnover of phage defense systems in cheese-associated bacterial communities
 
-Repository containing scripts and statistical analysis of the CRISPRscope project.
+Repository containing scripts and statistical analysis of the project. 
 
 *Publication to be expected soon
 
