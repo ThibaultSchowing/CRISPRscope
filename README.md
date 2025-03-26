@@ -2,7 +2,7 @@
 
 Repository containing scripts and statistical analysis of the project. 
 
-*Publication to be expected soon
+*Publication available [here](https://microbiomejournal.biomedcentral.com/articles/10.1186/s40168-022-01328-6)
 
 <pre><code>
 
